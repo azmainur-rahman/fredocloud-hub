@@ -11,6 +11,10 @@ const publicUserSelect = {
   updatedAt: true,
 };
 
+const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const passwordMessage =
+  "Password must be at least 8 characters and include a letter, number, and special character.";
+
 export const registerUser = async (req, res) => {
   try {
     const { email, password, name, avatarUrl } = req.body;
@@ -19,6 +23,10 @@ export const registerUser = async (req, res) => {
       return res
         .status(400)
         .json({ message: "Email, password, and name are required." });
+    }
+
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({ message: passwordMessage });
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -90,4 +98,8 @@ export const logoutUser = (req, res) => {
   clearAuthCookies(res);
 
   return res.json({ message: "Logged out successfully." });
+};
+
+export const getMe = (req, res) => {
+  return res.json({ user: req.user });
 };

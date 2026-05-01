@@ -13,6 +13,7 @@ const emptyAnnouncement = {
 
 export default function AnnouncementsPage() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
+  const accentColor = activeWorkspace?.accentColor || "#f97316";
   const announcements = useAnnouncementStore((state) => state.announcements);
   const isLoading = useAnnouncementStore((state) => state.isLoading);
   const fetchAnnouncements = useAnnouncementStore(
@@ -91,8 +92,9 @@ export default function AnnouncementsPage() {
           </p>
         </div>
         <button
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-orange-500 px-5 text-sm font-bold text-gray-950 transition hover:bg-orange-400"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold text-gray-950 transition hover:brightness-110"
           onClick={() => setIsModalOpen(true)}
+          style={{ backgroundColor: accentColor }}
           type="button"
         >
           <Plus size={18} />
@@ -203,8 +205,9 @@ export default function AnnouncementsPage() {
             </label>
 
             <button
-              className="mt-6 h-11 w-full rounded-lg bg-orange-500 text-sm font-bold text-gray-950 transition hover:bg-orange-400 disabled:opacity-60"
+              className="mt-6 h-11 w-full rounded-lg text-sm font-bold text-gray-950 transition hover:brightness-110 disabled:opacity-60"
               disabled={isLoading}
+              style={{ backgroundColor: accentColor }}
               type="submit"
             >
               {isLoading ? "Publishing..." : "Publish announcement"}

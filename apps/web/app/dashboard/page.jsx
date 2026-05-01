@@ -55,6 +55,7 @@ const downloadCsv = (filename, rows) => {
 export default function DashboardPage() {
   const [isMounted, setIsMounted] = useState(false);
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
+  const accentColor = activeWorkspace?.accentColor || "#f97316";
   const goals = useGoalStore((state) => state.goals);
   const fetchGoals = useGoalStore((state) => state.fetchGoals);
   const actionItems = useActionItemStore((state) => state.actionItems);
@@ -167,8 +168,9 @@ export default function DashboardPage() {
           </p>
         </div>
         <button
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-orange-500 px-5 text-sm font-bold text-gray-950 transition hover:bg-orange-400"
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold text-gray-950 transition hover:brightness-110"
           onClick={exportWorkspaceData}
+          style={{ backgroundColor: accentColor }}
           type="button"
         >
           <Download size={18} />
@@ -186,10 +188,16 @@ export default function DashboardPage() {
               key={card.label}
             >
               <div className="flex items-center justify-between">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-500/10 text-orange-400">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-950"
+                  style={{ backgroundColor: accentColor }}
+                >
                   <Icon size={20} />
                 </div>
-                <span className="rounded-full border border-orange-500/30 px-3 py-1 text-xs font-semibold text-orange-300">
+                <span
+                  className="rounded-full border px-3 py-1 text-xs font-semibold"
+                  style={{ borderColor: accentColor, color: accentColor }}
+                >
                   Live
                 </span>
               </div>
@@ -232,7 +240,11 @@ export default function DashboardPage() {
                       color: "#fff",
                     }}
                   />
-                  <Bar dataKey="value" fill="#f97316" radius={[10, 10, 0, 0]} />
+                  <Bar
+                    dataKey="value"
+                    fill={accentColor}
+                    radius={[10, 10, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : null}
@@ -261,7 +273,11 @@ export default function DashboardPage() {
                   >
                     {analytics.statusCounts.map((entry, index) => (
                       <Cell
-                        fill={chartColors[index % chartColors.length]}
+                        fill={
+                          index === 0
+                            ? accentColor
+                            : chartColors[index % chartColors.length]
+                        }
                         key={entry.name}
                       />
                     ))}
@@ -288,7 +304,10 @@ export default function DashboardPage() {
                   <span
                     className="h-2.5 w-2.5 rounded-full"
                     style={{
-                      backgroundColor: chartColors[index % chartColors.length],
+                      backgroundColor:
+                        index === 0
+                          ? accentColor
+                          : chartColors[index % chartColors.length],
                     }}
                   />
                   {item.name}

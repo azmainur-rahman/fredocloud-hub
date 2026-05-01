@@ -83,7 +83,8 @@ export const getAnnouncement = async (req, res) => {
 export const createAnnouncement = async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    const { content, pinned } = req.body;
+    const content = req.body.content?.trim();
+    const { pinned } = req.body;
 
     if (!content) {
       return res.status(400).json({ message: "Content is required." });
@@ -138,7 +139,12 @@ export const createAnnouncement = async (req, res) => {
 export const updateAnnouncement = async (req, res) => {
   try {
     const { workspaceId, announcementId } = req.params;
-    const { content, pinned } = req.body;
+    const content = req.body.content?.trim();
+    const { pinned } = req.body;
+
+    if (req.body.content !== undefined && !content) {
+      return res.status(400).json({ message: "Content cannot be empty." });
+    }
 
     const announcement = await prisma.$transaction(async (tx) => {
       const hasAccess = await ensureWorkspaceMember(

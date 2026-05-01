@@ -1,6 +1,9 @@
 import prisma from "../utils/prisma.js";
 import { emitToWorkspace } from "../utils/socket.js";
 
+const priorities = ["LOW", "MEDIUM", "HIGH"];
+const itemStatuses = ["TODO", "IN_PROGRESS", "DONE"];
+
 const actionItemInclude = {
   assignee: {
     select: {
@@ -50,6 +53,12 @@ const ensureGoalInWorkspace = async (goalId, workspaceId, tx = prisma) =>
     },
     select: { id: true },
   });
+
+const isValidDate = (value) => {
+  const date = new Date(value);
+
+  return value && !Number.isNaN(date.getTime());
+};
 
 export const getActionItems = async (req, res) => {
   try {
@@ -104,12 +113,25 @@ export const getActionItem = async (req, res) => {
 export const createActionItem = async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    const { title, priority, status, dueDate, assigneeId, goalId } = req.body;
+    const title = req.body.title?.trim();
+    const { priority, status, dueDate, assigneeId, goalId } = req.body;
 
     if (!title || !dueDate || !goalId) {
       return res
         .status(400)
         .json({ message: "Title, due date, and goal are required." });
+    }
+
+    if (priority && !priorities.includes(priority)) {
+      return res.status(400).json({ message: "Invalid priority." });
+    }
+
+    if (status && !itemStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid item status." });
+    }
+
+    if (!isValidDate(dueDate)) {
+      return res.status(400).json({ message: "Due date is invalid." });
     }
 
     const actionItem = await prisma.$transaction(async (tx) => {
@@ -174,7 +196,24 @@ export const createActionItem = async (req, res) => {
 export const updateActionItem = async (req, res) => {
   try {
     const { workspaceId, actionItemId } = req.params;
-    const { title, priority, status, dueDate, assigneeId, goalId } = req.body;
+    const title = req.body.title?.trim();
+    const { priority, status, dueDate, assigneeId, goalId } = req.body;
+
+    if (req.body.title !== undefined && !title) {
+      return res.status(400).json({ message: "Title cannot be empty." });
+    }
+
+    if (priority !== undefined && !priorities.includes(priority)) {
+      return res.status(400).json({ message: "Invalid priority." });
+    }
+
+    if (status !== undefined && !itemStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid item status." });
+    }
+
+    if (dueDate !== undefined && !isValidDate(dueDate)) {
+      return res.status(400).json({ message: "Due date is invalid." });
+    }
 
     const actionItem = await prisma.$transaction(async (tx) => {
       const hasAccess = await ensureWorkspaceMember(

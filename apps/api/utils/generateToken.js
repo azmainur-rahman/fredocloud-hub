@@ -39,6 +39,6 @@ export const generateToken = (res, userId) => {
 };
 
 export const clearAuthCookies = (res) => {
-  res.clearCookie(accessCookieName, getCookieOptions(0));
-  res.clearCookie(refreshCookieName, getCookieOptions(0));
+  res.cookie(accessCookieName, "", getCookieOptions(0));
+  res.cookie(refreshCookieName, "", getCookieOptions(0));
 };

@@ -47,3 +47,30 @@ export const protect = async (req, res, next) => {
       .json({ message: "Not authorized. Invalid access token." });
   }
 };
+
+export const requireAdmin = async (req, res, next) => {
+  try {
+    const { workspaceId } = req.params;
+
+    if (!workspaceId) {
+      return res.status(400).json({ message: "Workspace ID is required." });
+    }
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: {
+        userId_workspaceId: {
+          userId: req.user.id,
+          workspaceId,
+        },
+      },
+    });
+
+    if (!membership || membership.role !== "ADMIN") {
+      return res.status(403).json({ message: "Admin access required." });
+    }
+
+    return next();
+  } catch {
+    return res.status(500).json({ message: "Failed to verify role." });
+  }
+};

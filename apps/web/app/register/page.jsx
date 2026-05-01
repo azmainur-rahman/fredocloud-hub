@@ -10,8 +10,9 @@ import useAuthStore from "../../store/useAuthStore.js";
 const inputClassName =
   "w-full bg-gray-800 text-sm text-white outline-none transition-colors placeholder:text-gray-500 autofill:bg-gray-800 autofill:text-white autofill:shadow-[inset_0_0_0px_1000px_rgb(31,41,55)] autofill:[-webkit-text-fill-color:white]";
 
-const isStrongPassword = (password) =>
-  password.length >= 8 && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const passwordMessage =
+  "Password must be at least 8 characters and include a letter, number, and special character.";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -33,10 +34,8 @@ export default function RegisterPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!isStrongPassword(form.password)) {
-      toast.error(
-        "Password must be at least 8 characters and include a number and special character.",
-      );
+    if (!passwordRegex.test(form.password)) {
+      toast.error(passwordMessage);
       return;
     }
 

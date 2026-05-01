@@ -9,6 +9,10 @@ const useAuthStore = create((set) => ({
   isAuthenticated: false,
   isLoading: false,
 
+  setUser: (user) => {
+    set({ user, isAuthenticated: Boolean(user) });
+  },
+
   register: async (payload) => {
     set({ isLoading: true });
 
@@ -73,6 +77,31 @@ const useAuthStore = create((set) => ({
     } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
       return null;
+    }
+  },
+
+  uploadAvatar: async (file) => {
+    set({ isLoading: true });
+
+    try {
+      const formData = new FormData();
+
+      formData.append("avatar", file);
+
+      const response = await api.post("/users/avatar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      set({
+        user: response.data.user,
+        isAuthenticated: true,
+        isLoading: false,
+      });
+
+      return response.data.user;
+    } catch (error) {
+      set({ isLoading: false });
+      throw new Error(getErrorMessage(error, "Failed to upload avatar."));
     }
   },
 }));

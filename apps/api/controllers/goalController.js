@@ -1,6 +1,8 @@
 import prisma from "../utils/prisma.js";
 import { emitToWorkspace } from "../utils/socket.js";
 
+const goalStatuses = ["PENDING", "IN_PROGRESS", "COMPLETED"];
+
 const goalInclude = {
   owner: {
     select: {
@@ -41,13 +43,22 @@ const createAuditLog = (tx, { action, details, userId, workspaceId }) =>
 const normalizeMilestones = (milestones) =>
   Array.isArray(milestones)
     ? milestones
-        .filter((milestone) => milestone.title)
+        .filter((milestone) => milestone.title?.trim())
         .map((milestone) => ({
           id: milestone.id,
-          title: milestone.title,
-          progressPercentage: Number(milestone.progressPercentage || 0),
+          title: milestone.title.trim(),
+          progressPercentage: Math.min(
+            100,
+            Math.max(0, Number(milestone.progressPercentage || 0)),
+          ),
         }))
     : [];
+
+const isValidDate = (value) => {
+  const date = new Date(value);
+
+  return value && !Number.isNaN(date.getTime());
+};
 
 export const getGoals = async (req, res) => {
   try {
@@ -97,13 +108,22 @@ export const getGoal = async (req, res) => {
 export const createGoal = async (req, res) => {
   try {
     const { workspaceId } = req.params;
-    const { title, description, status, dueDate, ownerId, milestones } =
-      req.body;
+    const title = req.body.title?.trim();
+    const description = req.body.description?.trim();
+    const { status, dueDate, ownerId, milestones } = req.body;
 
     if (!title || !description || !dueDate) {
       return res
         .status(400)
         .json({ message: "Title, description, and due date are required." });
+    }
+
+    if (status && !goalStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid goal status." });
+    }
+
+    if (!isValidDate(dueDate)) {
+      return res.status(400).json({ message: "Due date is invalid." });
     }
 
     const goal = await prisma.$transaction(async (tx) => {
@@ -160,8 +180,25 @@ export const createGoal = async (req, res) => {
 export const updateGoal = async (req, res) => {
   try {
     const { workspaceId, goalId } = req.params;
-    const { title, description, status, dueDate, ownerId, milestones } =
-      req.body;
+    const title = req.body.title?.trim();
+    const description = req.body.description?.trim();
+    const { status, dueDate, ownerId, milestones } = req.body;
+
+    if (req.body.title !== undefined && !title) {
+      return res.status(400).json({ message: "Title cannot be empty." });
+    }
+
+    if (req.body.description !== undefined && !description) {
+      return res.status(400).json({ message: "Description cannot be empty." });
+    }
+
+    if (status !== undefined && !goalStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid goal status." });
+    }
+
+    if (dueDate !== undefined && !isValidDate(dueDate)) {
+      return res.status(400).json({ message: "Due date is invalid." });
+    }
 
     const goal = await prisma.$transaction(async (tx) => {
       const hasAccess = await ensureWorkspaceMember(

@@ -35,6 +35,7 @@ const priorityClasses = {
 
 export default function ActionItemsPage() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
+  const accentColor = activeWorkspace?.accentColor || "#f97316";
   const goals = useGoalStore((state) => state.goals);
   const fetchGoals = useGoalStore((state) => state.fetchGoals);
   const actionItems = useActionItemStore((state) => state.actionItems);
@@ -190,10 +191,13 @@ export default function ActionItemsPage() {
             <button
               className={`inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition ${
                 view === "list"
-                  ? "bg-orange-500 text-gray-950"
+                  ? "text-gray-950"
                   : "text-gray-300 hover:text-orange-300"
               }`}
               onClick={() => setView("list")}
+              style={
+                view === "list" ? { backgroundColor: accentColor } : undefined
+              }
               type="button"
             >
               <List size={16} />
@@ -202,10 +206,13 @@ export default function ActionItemsPage() {
             <button
               className={`inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition ${
                 view === "kanban"
-                  ? "bg-orange-500 text-gray-950"
+                  ? "text-gray-950"
                   : "text-gray-300 hover:text-orange-300"
               }`}
               onClick={() => setView("kanban")}
+              style={
+                view === "kanban" ? { backgroundColor: accentColor } : undefined
+              }
               type="button"
             >
               <Columns3 size={16} />
@@ -213,8 +220,9 @@ export default function ActionItemsPage() {
             </button>
           </div>
           <button
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-orange-500 px-5 text-sm font-bold text-gray-950 transition hover:bg-orange-400"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold text-gray-950 transition hover:brightness-110"
             onClick={() => setIsModalOpen(true)}
+            style={{ backgroundColor: accentColor }}
             type="button"
           >
             <Plus size={18} />
@@ -337,8 +345,9 @@ export default function ActionItemsPage() {
             </div>
 
             <button
-              className="mt-6 h-11 w-full rounded-lg bg-orange-500 text-sm font-bold text-gray-950 transition hover:bg-orange-400 disabled:opacity-60"
+              className="mt-6 h-11 w-full rounded-lg text-sm font-bold text-gray-950 transition hover:brightness-110 disabled:opacity-60"
               disabled={isLoading}
+              style={{ backgroundColor: accentColor }}
               type="submit"
             >
               {isLoading ? "Creating..." : "Create action item"}

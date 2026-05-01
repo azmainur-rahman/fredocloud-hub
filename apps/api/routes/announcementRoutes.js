@@ -6,18 +6,18 @@ import {
   getAnnouncements,
   updateAnnouncement,
 } from "../controllers/announcementController.js";
-import { protect } from "../middlewares/authMiddleware.js";
+import { protect, requireAdmin } from "../middlewares/authMiddleware.js";
 
 const router = express.Router({ mergeParams: true });
 
 router
   .route("/")
   .get(protect, getAnnouncements)
-  .post(protect, createAnnouncement);
+  .post(protect, requireAdmin, createAnnouncement);
 router
   .route("/:announcementId")
   .get(protect, getAnnouncement)
-  .put(protect, updateAnnouncement)
-  .delete(protect, deleteAnnouncement);
+  .put(protect, requireAdmin, updateAnnouncement)
+  .delete(protect, requireAdmin, deleteAnnouncement);
 
 export default router;
