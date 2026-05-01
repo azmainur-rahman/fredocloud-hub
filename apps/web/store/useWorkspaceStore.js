@@ -42,7 +42,10 @@ const useWorkspaceStore = create(
 
         try {
           const response = await api.post("/workspaces", payload);
-          const workspace = response.data.workspace;
+          const workspace = {
+            ...response.data.workspace,
+            role: response.data.workspace?.role || "ADMIN",
+          };
           const workspaces = [...get().workspaces, workspace];
 
           set({ workspaces, activeWorkspace: workspace, isLoading: false });

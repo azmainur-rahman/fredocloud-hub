@@ -9,6 +9,7 @@ import useWorkspaceStore from "../../store/useWorkspaceStore.js";
 
 export default function Header() {
   const user = useAuthStore((state) => state.user);
+  const authLoading = useAuthStore((state) => state.isLoading);
   const uploadAvatar = useAuthStore((state) => state.uploadAvatar);
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
   const isLoading = useWorkspaceStore((state) => state.isLoading);
@@ -23,6 +24,7 @@ export default function Header() {
   const isAdmin = activeWorkspace?.role === "ADMIN";
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "MEMBER",
@@ -63,11 +65,14 @@ export default function Header() {
       return;
     }
 
+    const loadingToast = toast.loading("Uploading avatar...");
+
     try {
       await uploadAvatar(file);
-      toast.success("Avatar updated.");
+      toast.success("Avatar updated.", { id: loadingToast });
+      setIsProfileOpen(false);
     } catch (error) {
-      toast.error(error.message);
+      toast.error(error.message, { id: loadingToast });
     } finally {
       event.target.value = "";
     }
@@ -164,11 +169,9 @@ export default function Header() {
               <Bell size={18} />
               {unreadCount > 0 ? (
                 <span
-                  className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-gray-950"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  {unreadCount}
-                </span>
+                  className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-gray-900"
+                  aria-label={`${unreadCount} unread notifications`}
+                />
               ) : null}
             </button>
             {isNotificationsOpen ? (
@@ -205,7 +208,11 @@ export default function Header() {
               </div>
             ) : null}
           </div>
-          <div className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-2 py-2 pr-4">
+          <button
+            className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] px-2 py-2 pr-4 transition hover:border-orange-500/60"
+            onClick={() => setIsProfileOpen(true)}
+            type="button"
+          >
             <div
               className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-gray-950"
               style={{ backgroundColor: accentColor }}
@@ -223,16 +230,7 @@ export default function Header() {
             <span className="hidden max-w-32 truncate text-sm font-semibold text-gray-200 sm:block">
               {user?.name || "User"}
             </span>
-            <label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/10 text-gray-400 transition hover:border-orange-500/60 hover:text-orange-300">
-              <Upload size={15} />
-              <input
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarChange}
-                type="file"
-              />
-            </label>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -298,6 +296,70 @@ export default function Header() {
               {isLoading ? "Inviting..." : "Send invite"}
             </button>
           </form>
+        </div>
+      ) : null}
+
+      {isProfileOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-gray-950 p-6 shadow-2xl shadow-orange-950/40">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-400">
+                  Profile
+                </p>
+                <h2 className="mt-2 text-2xl font-bold">Upload avatar</h2>
+              </div>
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:text-white"
+                onClick={() => setIsProfileOpen(false)}
+                type="button"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <div
+                className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full text-xl font-bold text-gray-950"
+                style={{ backgroundColor: accentColor }}
+              >
+                {user?.avatarUrl ? (
+                  <img
+                    alt={user.name || "User"}
+                    className="h-full w-full object-cover"
+                    src={user.avatarUrl}
+                  />
+                ) : (
+                  user?.name?.charAt(0)?.toUpperCase() || "U"
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-base font-bold text-white">
+                  {user?.name || "User"}
+                </p>
+                <p className="truncate text-sm text-gray-400">
+                  {user?.email || "No email available"}
+                </p>
+              </div>
+            </div>
+
+            <label className="mt-5 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-gray-900 px-4 py-6 text-center transition hover:border-orange-500/60 hover:bg-orange-500/5">
+              <Upload className="mb-3 text-orange-400" size={24} />
+              <span className="text-sm font-semibold text-white">
+                Choose a profile image
+              </span>
+              <span className="mt-1 text-xs text-gray-500">
+                PNG, JPG, or WebP
+              </span>
+              <input
+                accept="image/*"
+                className="hidden"
+                disabled={authLoading}
+                onChange={handleAvatarChange}
+                type="file"
+              />
+            </label>
+          </div>
         </div>
       ) : null}
     </header>

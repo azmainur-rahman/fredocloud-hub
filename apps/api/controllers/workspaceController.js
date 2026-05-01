@@ -29,7 +29,7 @@ export const createWorkspace = async (req, res) => {
         },
       });
 
-      await tx.workspaceMember.create({
+      const membership = await tx.workspaceMember.create({
         data: {
           userId: req.user.id,
           workspaceId: createdWorkspace.id,
@@ -37,10 +37,10 @@ export const createWorkspace = async (req, res) => {
         },
       });
 
-      return createdWorkspace;
+      return { ...createdWorkspace, role: membership.role };
     });
 
-    return res.status(201).json({ workspace: { ...workspace, role: "ADMIN" } });
+    return res.status(201).json({ workspace });
   } catch {
     return res.status(500).json({ message: "Failed to create workspace." });
   }
