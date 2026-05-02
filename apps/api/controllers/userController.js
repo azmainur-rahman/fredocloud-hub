@@ -34,6 +34,7 @@ const uploadToCloudinary = (fileBuffer) =>{
     stream.end(fileBuffer);
   });
 }
+
 export const uploadAvatar = async (req, res) => {
   try {
     if (!req.file) {
@@ -54,7 +55,9 @@ export const uploadAvatar = async (req, res) => {
     });
 
     return res.json({ user });
-  } catch {
+  } catch (error) {
+
+    console.error("🔥 AVATAR UPLOAD ERROR:", error); 
     return res.status(500).json({
       message: "Failed to upload avatar. Check Cloudinary configuration.",
     });
@@ -139,7 +142,9 @@ export const uploadAttachment = async (req, res) => {
     });
 
     return res.status(201).json({ attachment });
-  } catch {
+  } catch (error) {
+   
+    console.error("🔥 ATTACHMENT UPLOAD ERROR:", error);
     return res.status(500).json({
       message: "Failed to upload attachment. Check Cloudinary configuration.",
     });
