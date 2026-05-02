@@ -86,8 +86,24 @@ export const uploadAttachment = async (req, res) => {
       },
     });
 
-    if (!membership) {
-      return res.status(403).json({ message: "Workspace access denied." });
+    if (!membership || membership.role !== "ADMIN") {
+      return res.status(403).json({ message: "Admin access required." });
+    }
+
+    if (entityType !== "ANNOUNCEMENT") {
+      return res.status(400).json({ message: "Unsupported attachment type." });
+    }
+
+    const announcement = await prisma.announcement.findFirst({
+      where: {
+        id: entityId,
+        workspaceId,
+      },
+      select: { id: true },
+    });
+
+    if (!announcement) {
+      return res.status(404).json({ message: "Announcement not found." });
     }
 
     const result = await new Promise((resolve, reject) => {

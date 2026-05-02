@@ -28,6 +28,7 @@ export default function Header() {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
   const [inviteForm, setInviteForm] = useState({
     email: "",
     role: "MEMBER",
@@ -94,6 +95,12 @@ export default function Header() {
       return;
     }
 
+    if (isInviting) {
+      return;
+    }
+
+    setIsInviting(true);
+
     try {
       await inviteMember(activeWorkspace.id, inviteForm.email, inviteForm.role);
       toast.success("Member invited.");
@@ -101,6 +108,8 @@ export default function Header() {
       setIsInviteOpen(false);
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setIsInviting(false);
     }
   };
 
@@ -431,11 +440,11 @@ export default function Header() {
 
             <button
               className="mt-6 h-11 w-full rounded-lg text-sm font-bold text-gray-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isLoading}
+              disabled={isLoading || isInviting}
               style={{ backgroundColor: accentColor }}
               type="submit"
             >
-              {isLoading ? "Inviting..." : "Send invite"}
+              {isLoading || isInviting ? "Inviting..." : "Send invite"}
             </button>
           </form>
         </div>

@@ -41,6 +41,7 @@ export default function ActionItemsPage() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
   const members = useWorkspaceStore((state) => state.members);
   const accentColor = activeWorkspace?.accentColor || "#f97316";
+  const isAdmin = activeWorkspace?.role === "ADMIN";
   const goals = useGoalStore((state) => state.goals);
   const fetchGoals = useGoalStore((state) => state.fetchGoals);
   const actionItems = useActionItemStore((state) => state.actionItems);
@@ -61,6 +62,8 @@ export default function ActionItemsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingActionItem, setEditingActionItem] = useState(null);
   const [form, setForm] = useState(emptyActionItem);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingActionItems, setPendingActionItems] = useState({});
 
   useEffect(() => {
     if (activeWorkspace?.id) {
@@ -115,6 +118,12 @@ export default function ActionItemsPage() {
       return;
     }
 
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
       if (editingActionItem) {
         await updateActionItem(activeWorkspace.id, editingActionItem.id, form);
@@ -133,6 +142,8 @@ export default function ActionItemsPage() {
       setIsModalOpen(false);
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -174,20 +185,48 @@ export default function ActionItemsPage() {
   };
 
   const handleStatusChange = async (actionItem, status) => {
+    if (pendingActionItems[actionItem.id]) {
+      return;
+    }
+
+    setPendingActionItems((current) => ({
+      ...current,
+      [actionItem.id]: true,
+    }));
+
     try {
       await updateActionItem(activeWorkspace.id, actionItem.id, { status });
       toast.success("Action item updated.");
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setPendingActionItems((current) => ({
+        ...current,
+        [actionItem.id]: false,
+      }));
     }
   };
 
   const handleDelete = async (actionItemId) => {
+    if (pendingActionItems[actionItemId]) {
+      return;
+    }
+
+    setPendingActionItems((current) => ({
+      ...current,
+      [actionItemId]: true,
+    }));
+
     try {
       await deleteActionItem(activeWorkspace.id, actionItemId);
       toast.success("Action item deleted.");
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setPendingActionItems((current) => ({
+        ...current,
+        [actionItemId]: false,
+      }));
     }
   };
 
@@ -217,6 +256,7 @@ export default function ActionItemsPage() {
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <select
           className="h-9 rounded-lg border border-gray-800 bg-gray-900 px-3 text-xs font-semibold text-white outline-none focus:border-orange-500"
+          disabled={pendingActionItems[item.id]}
           onChange={(event) => handleStatusChange(item, event.target.value)}
           value={item.status}
         >
@@ -228,18 +268,22 @@ export default function ActionItemsPage() {
         </select>
         <button
           className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-orange-500/50 hover:text-orange-300"
+          disabled={pendingActionItems[item.id]}
           onClick={() => openEditModal(item)}
           type="button"
         >
           <Pencil size={16} />
         </button>
-        <button
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-red-500/50 hover:text-red-300"
-          onClick={() => handleDelete(item.id)}
-          type="button"
-        >
-          <Trash2 size={16} />
-        </button>
+        {isAdmin ? (
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-red-500/50 hover:text-red-300"
+            disabled={pendingActionItems[item.id]}
+            onClick={() => handleDelete(item.id)}
+            type="button"
+          >
+            <Trash2 size={16} />
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -434,11 +478,11 @@ export default function ActionItemsPage() {
 
             <button
               className="mt-6 h-11 w-full rounded-lg text-sm font-bold text-gray-950 transition hover:brightness-110 disabled:opacity-60"
-              disabled={isLoading}
+              disabled={isLoading || isSubmitting}
               style={{ backgroundColor: accentColor }}
               type="submit"
             >
-              {isLoading
+              {isLoading || isSubmitting
                 ? editingActionItem
                   ? "Saving..."
                   : "Creating..."

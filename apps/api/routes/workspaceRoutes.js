@@ -27,6 +27,7 @@ router.get("/:workspaceId/audit-logs", protect, getAuditLogs);
 router.post(
   "/:workspaceId/attachments",
   protect,
+  requireAdmin,
   upload.single("attachment"),
   uploadAttachment,
 );

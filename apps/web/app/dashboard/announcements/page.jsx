@@ -24,6 +24,9 @@ const emptyAnnouncement = {
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
 
+const isImageAttachment = (attachment) =>
+  attachment.fileType?.startsWith("image/");
+
 export default function AnnouncementsPage() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
   const accentColor = activeWorkspace?.accentColor || "#f97316";
@@ -52,6 +55,7 @@ export default function AnnouncementsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingComments, setPendingComments] = useState({});
   const [pendingReactions, setPendingReactions] = useState({});
+  const [pendingAnnouncements, setPendingAnnouncements] = useState({});
 
   useEffect(() => {
     if (activeWorkspace?.id) {
@@ -122,6 +126,15 @@ export default function AnnouncementsPage() {
   };
 
   const togglePinned = async (announcement) => {
+    if (pendingAnnouncements[announcement.id]) {
+      return;
+    }
+
+    setPendingAnnouncements((current) => ({
+      ...current,
+      [announcement.id]: true,
+    }));
+
     try {
       await updateAnnouncement(activeWorkspace.id, announcement.id, {
         pinned: !announcement.pinned,
@@ -131,15 +144,34 @@ export default function AnnouncementsPage() {
       );
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setPendingAnnouncements((current) => ({
+        ...current,
+        [announcement.id]: false,
+      }));
     }
   };
 
   const handleDelete = async (announcementId) => {
+    if (pendingAnnouncements[announcementId]) {
+      return;
+    }
+
+    setPendingAnnouncements((current) => ({
+      ...current,
+      [announcementId]: true,
+    }));
+
     try {
       await deleteAnnouncement(activeWorkspace.id, announcementId);
       toast.success("Announcement deleted.");
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setPendingAnnouncements((current) => ({
+        ...current,
+        [announcementId]: false,
+      }));
     }
   };
 
@@ -280,19 +312,39 @@ export default function AnnouncementsPage() {
                     {new Date(announcement.createdAt).toLocaleDateString()}
                   </p>
                   {(announcement.attachments || []).length > 0 ? (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {announcement.attachments.map((attachment) => (
-                        <a
-                          className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-gray-300 transition hover:border-orange-500/60 hover:text-orange-300"
-                          href={attachment.url}
-                          key={attachment.id}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <Paperclip size={13} />
-                          {attachment.fileName}
-                        </a>
-                      ))}
+                    <div className="mt-4 grid gap-3">
+                      {announcement.attachments.map((attachment) =>
+                        isImageAttachment(attachment) ? (
+                          <a
+                            className="block overflow-hidden rounded-xl border border-white/10 bg-gray-950/60 transition hover:border-orange-500/60"
+                            href={attachment.url}
+                            key={attachment.id}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            <img
+                              alt={attachment.fileName}
+                              className="max-h-96 w-full object-cover"
+                              src={attachment.url}
+                            />
+                            <span className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-gray-300">
+                              <Paperclip size={13} />
+                              {attachment.fileName}
+                            </span>
+                          </a>
+                        ) : (
+                          <a
+                            className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 px-3 py-1 text-xs font-semibold text-gray-300 transition hover:border-orange-500/60 hover:text-orange-300"
+                            href={attachment.url}
+                            key={attachment.id}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            <Paperclip size={13} />
+                            {attachment.fileName}
+                          </a>
+                        ),
+                      )}
                     </div>
                   ) : null}
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -320,6 +372,7 @@ export default function AnnouncementsPage() {
                   <div className="flex gap-2">
                     <button
                       className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-3 text-sm font-semibold text-gray-300 transition hover:border-orange-500/60 hover:text-orange-300"
+                      disabled={pendingAnnouncements[announcement.id]}
                       onClick={() => togglePinned(announcement)}
                       type="button"
                     >
@@ -328,6 +381,7 @@ export default function AnnouncementsPage() {
                     </button>
                     <button
                       className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-orange-500/50 hover:text-orange-300"
+                      disabled={pendingAnnouncements[announcement.id]}
                       onClick={() => openEditModal(announcement)}
                       type="button"
                     >
@@ -335,6 +389,7 @@ export default function AnnouncementsPage() {
                     </button>
                     <button
                       className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-red-500/50 hover:text-red-300"
+                      disabled={pendingAnnouncements[announcement.id]}
                       onClick={() => handleDelete(announcement.id)}
                       type="button"
                     >

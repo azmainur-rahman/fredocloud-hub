@@ -25,10 +25,44 @@ const statusLabels = {
   COMPLETED: "Completed",
 };
 
+const clampProgress = (value) => Math.min(100, Math.max(0, Number(value) || 0));
+
+const getGoalProgress = (goal) => {
+  if (goal.status === "COMPLETED") {
+    return 100;
+  }
+
+  const milestones = goal.milestones || [];
+
+  if (milestones.length === 0) {
+    return goal.status === "IN_PROGRESS" ? 50 : 0;
+  }
+
+  return Math.round(
+    milestones.reduce(
+      (total, milestone) => total + clampProgress(milestone.progressPercentage),
+      0,
+    ) / milestones.length,
+  );
+};
+
+const getStatusMilestones = (goal, status) => {
+  if (!["COMPLETED", "PENDING"].includes(status)) {
+    return undefined;
+  }
+
+  return (goal.milestones || []).map((milestone) => ({
+    id: milestone.id,
+    title: milestone.title,
+    progressPercentage: status === "COMPLETED" ? 100 : 0,
+  }));
+};
+
 export default function GoalsPage() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
   const members = useWorkspaceStore((state) => state.members);
   const accentColor = activeWorkspace?.accentColor || "#f97316";
+  const isAdmin = activeWorkspace?.role === "ADMIN";
   const goals = useGoalStore((state) => state.goals);
   const isLoading = useGoalStore((state) => state.isLoading);
   const fetchGoals = useGoalStore((state) => state.fetchGoals);
@@ -40,6 +74,8 @@ export default function GoalsPage() {
   const [editingGoal, setEditingGoal] = useState(null);
   const [form, setForm] = useState(emptyGoal);
   const [updateDrafts, setUpdateDrafts] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingGoalActions, setPendingGoalActions] = useState({});
 
   useEffect(() => {
     if (activeWorkspace?.id) {
@@ -102,6 +138,12 @@ export default function GoalsPage() {
       return;
     }
 
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
       const payload = {
         ...form,
@@ -121,6 +163,8 @@ export default function GoalsPage() {
       setIsModalOpen(false);
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -157,20 +201,40 @@ export default function GoalsPage() {
   };
 
   const handleStatusChange = async (goal, status) => {
+    if (pendingGoalActions[goal.id]) {
+      return;
+    }
+
+    setPendingGoalActions((current) => ({ ...current, [goal.id]: true }));
+
     try {
-      await updateGoal(activeWorkspace.id, goal.id, { status });
+      const milestones = getStatusMilestones(goal, status);
+      await updateGoal(activeWorkspace.id, goal.id, {
+        status,
+        ...(milestones ? { milestones } : {}),
+      });
       toast.success("Goal updated.");
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setPendingGoalActions((current) => ({ ...current, [goal.id]: false }));
     }
   };
 
   const handleDelete = async (goalId) => {
+    if (pendingGoalActions[goalId]) {
+      return;
+    }
+
+    setPendingGoalActions((current) => ({ ...current, [goalId]: true }));
+
     try {
       await deleteGoal(activeWorkspace.id, goalId);
       toast.success("Goal deleted.");
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setPendingGoalActions((current) => ({ ...current, [goalId]: false }));
     }
   };
 
@@ -182,12 +246,26 @@ export default function GoalsPage() {
       return;
     }
 
+    if (pendingGoalActions[`update:${goalId}`]) {
+      return;
+    }
+
+    setPendingGoalActions((current) => ({
+      ...current,
+      [`update:${goalId}`]: true,
+    }));
+
     try {
       await createGoalUpdate(activeWorkspace.id, goalId, { content });
       setUpdateDrafts((current) => ({ ...current, [goalId]: "" }));
       toast.success("Progress update posted.");
     } catch (error) {
       toast.error(error.message);
+    } finally {
+      setPendingGoalActions((current) => ({
+        ...current,
+        [`update:${goalId}`]: false,
+      }));
     }
   };
 
@@ -222,120 +300,157 @@ export default function GoalsPage() {
               : "Create or select a workspace to begin."}
           </div>
         ) : (
-          goals.map((goal) => (
-            <article
-              className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 shadow-xl shadow-black/10"
-              key={goal.id}
-            >
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300">
-                    <Target size={14} />
-                    {statusLabels[goal.status]}
-                  </div>
-                  <h3 className="text-xl font-bold">{goal.title}</h3>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300">
-                    {goal.description}
-                  </p>
-                  <p className="mt-3 text-xs font-medium text-gray-500">
-                    Owner {goal.owner?.name || "Team member"} · Due{" "}
-                    {new Date(goal.dueDate).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <select
-                    className="h-10 rounded-lg border border-gray-800 bg-gray-950 px-3 text-sm text-white outline-none focus:border-orange-500"
-                    onChange={(event) =>
-                      handleStatusChange(goal, event.target.value)
-                    }
-                    value={goal.status}
-                  >
-                    {Object.entries(statusLabels).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-orange-500/50 hover:text-orange-300"
-                    onClick={() => openEditModal(goal)}
-                    type="button"
-                  >
-                    <Pencil size={17} />
-                  </button>
-                  <button
-                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-red-500/50 hover:text-red-300"
-                    onClick={() => handleDelete(goal.id)}
-                    type="button"
-                  >
-                    <Trash2 size={17} />
-                  </button>
-                </div>
-              </div>
+          goals.map((goal) => {
+            const progress = getGoalProgress(goal);
 
-              <div className="mt-5 grid gap-3">
-                {(goal.milestones || []).map((milestone) => (
-                  <div
-                    className="rounded-lg bg-gray-950/60 p-4"
-                    key={milestone.id}
-                  >
-                    <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-semibold text-gray-200">
-                        {milestone.title}
-                      </span>
-                      <span className="text-orange-300">
-                        {milestone.progressPercentage}%
-                      </span>
+            return (
+              <article
+                className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 shadow-xl shadow-black/10"
+                key={goal.id}
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-300">
+                      <Target size={14} />
+                      {statusLabels[goal.status]}
                     </div>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-800">
-                      <div
-                        className="h-full rounded-full bg-orange-500"
-                        style={{ width: `${milestone.progressPercentage}%` }}
-                      />
-                    </div>
+                    <h3 className="text-xl font-bold">{goal.title}</h3>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-300">
+                      {goal.description}
+                    </p>
+                    <p className="mt-3 text-xs font-medium text-gray-500">
+                      Owner {goal.owner?.name || "Team member"} · Due{" "}
+                      {new Date(goal.dueDate).toLocaleDateString()}
+                    </p>
                   </div>
-                ))}
-              </div>
-
-              <div className="mt-5 rounded-xl border border-white/10 bg-gray-950/50 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <input
-                    className="h-10 flex-1 rounded-lg border border-gray-800 bg-gray-900 px-3 text-sm text-white outline-none focus:border-orange-500"
-                    onChange={(event) =>
-                      setUpdateDrafts((current) => ({
-                        ...current,
-                        [goal.id]: event.target.value,
-                      }))
-                    }
-                    placeholder="Post a progress update"
-                    value={updateDrafts[goal.id] || ""}
-                  />
-                  <button
-                    className="h-10 rounded-lg px-4 text-sm font-bold text-gray-950 transition hover:brightness-110"
-                    onClick={() => handleProgressUpdate(goal.id)}
-                    style={{ backgroundColor: accentColor }}
-                    type="button"
-                  >
-                    Post update
-                  </button>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {(goal.updates || []).slice(0, 3).map((update) => (
-                    <div
-                      className="rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2"
-                      key={update.id}
+                  <div className="flex gap-2">
+                    <select
+                      className="h-10 rounded-lg border border-gray-800 bg-gray-950 px-3 text-sm text-white outline-none focus:border-orange-500"
+                      disabled={pendingGoalActions[goal.id]}
+                      onChange={(event) =>
+                        handleStatusChange(goal, event.target.value)
+                      }
+                      value={goal.status}
                     >
-                      <p className="text-sm text-gray-200">{update.content}</p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {update.author?.name || "Team member"} ·{" "}
-                        {new Date(update.createdAt).toLocaleString()}
-                      </p>
+                      {Object.entries(statusLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-orange-500/50 hover:text-orange-300"
+                      disabled={pendingGoalActions[goal.id]}
+                      onClick={() => openEditModal(goal)}
+                      type="button"
+                    >
+                      <Pencil size={17} />
+                    </button>
+                    {isAdmin ? (
+                      <button
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-red-500/50 hover:text-red-300"
+                        disabled={pendingGoalActions[goal.id]}
+                        onClick={() => handleDelete(goal.id)}
+                        type="button"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-xl border border-white/10 bg-gray-950/50 p-4">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-semibold text-gray-200">
+                      Overall progress
+                    </span>
+                    <span className="font-semibold text-orange-300">
+                      {progress}%
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-800">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        backgroundColor: accentColor,
+                        width: `${progress}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  {(goal.milestones || []).map((milestone) => (
+                    <div
+                      className="rounded-lg bg-gray-950/60 p-4"
+                      key={milestone.id}
+                    >
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="font-semibold text-gray-200">
+                          {milestone.title}
+                        </span>
+                        <span className="text-orange-300">
+                          {clampProgress(milestone.progressPercentage)}%
+                        </span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-800">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            backgroundColor: accentColor,
+                            width: `${clampProgress(
+                              milestone.progressPercentage,
+                            )}%`,
+                          }}
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            </article>
-          ))
+
+                <div className="mt-5 rounded-xl border border-white/10 bg-gray-950/50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      className="h-10 flex-1 rounded-lg border border-gray-800 bg-gray-900 px-3 text-sm text-white outline-none focus:border-orange-500"
+                      onChange={(event) =>
+                        setUpdateDrafts((current) => ({
+                          ...current,
+                          [goal.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="Post a progress update"
+                      value={updateDrafts[goal.id] || ""}
+                    />
+                    <button
+                      className="h-10 rounded-lg px-4 text-sm font-bold text-gray-950 transition hover:brightness-110"
+                      disabled={pendingGoalActions[`update:${goal.id}`]}
+                      onClick={() => handleProgressUpdate(goal.id)}
+                      style={{ backgroundColor: accentColor }}
+                      type="button"
+                    >
+                      Post update
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {(goal.updates || []).slice(0, 3).map((update) => (
+                      <div
+                        className="rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2"
+                        key={update.id}
+                      >
+                        <p className="text-sm text-gray-200">
+                          {update.content}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {update.author?.name || "Team member"} ·{" "}
+                          {new Date(update.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </article>
+            );
+          })
         )}
       </div>
 
@@ -465,11 +580,11 @@ export default function GoalsPage() {
 
             <button
               className="mt-6 h-11 w-full rounded-lg text-sm font-bold text-gray-950 transition hover:brightness-110 disabled:opacity-60"
-              disabled={isLoading}
+              disabled={isLoading || isSubmitting}
               style={{ backgroundColor: accentColor }}
               type="submit"
             >
-              {isLoading
+              {isLoading || isSubmitting
                 ? editingGoal
                   ? "Saving..."
                   : "Creating..."

@@ -43,6 +43,16 @@ const ensureWorkspaceMember = async (workspaceId, userId, tx = prisma) => {
   return Boolean(membership);
 };
 
+const getWorkspaceMembership = async (workspaceId, userId, tx = prisma) =>
+  tx.workspaceMember.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId,
+        workspaceId,
+      },
+    },
+  });
+
 const createAuditLog = (tx, { action, details, userId, workspaceId }) =>
   tx.auditLog.create({
     data: {
@@ -140,13 +150,13 @@ export const createGoal = async (req, res) => {
     }
 
     const goal = await prisma.$transaction(async (tx) => {
-      const hasAccess = await ensureWorkspaceMember(
+      const membership = await getWorkspaceMembership(
         workspaceId,
         req.user.id,
         tx,
       );
 
-      if (!hasAccess) {
+      if (!membership) {
         return null;
       }
 
@@ -308,6 +318,13 @@ export const updateGoal = async (req, res) => {
                 }),
           ),
         );
+      } else if (status === "COMPLETED" || status === "PENDING") {
+        await tx.milestone.updateMany({
+          where: { goalId },
+          data: {
+            progressPercentage: status === "COMPLETED" ? 100 : 0,
+          },
+        });
       }
 
       const updatedGoal = await tx.goal.update({
@@ -353,14 +370,18 @@ export const deleteGoal = async (req, res) => {
     const { workspaceId, goalId } = req.params;
 
     const deleted = await prisma.$transaction(async (tx) => {
-      const hasAccess = await ensureWorkspaceMember(
+      const membership = await getWorkspaceMembership(
         workspaceId,
         req.user.id,
         tx,
       );
 
-      if (!hasAccess) {
+      if (!membership) {
         return null;
+      }
+
+      if (membership.role !== "ADMIN") {
+        return "delete-forbidden";
       }
 
       const existingGoal = await tx.goal.findFirst({
@@ -389,6 +410,10 @@ export const deleteGoal = async (req, res) => {
 
     if (deleted === false) {
       return res.status(404).json({ message: "Goal not found." });
+    }
+
+    if (deleted === "delete-forbidden") {
+      return res.status(403).json({ message: "Only admins can delete goals." });
     }
 
     emitToWorkspace(workspaceId, "goal_deleted", { goalId });

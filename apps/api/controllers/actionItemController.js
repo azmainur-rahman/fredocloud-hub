@@ -22,7 +22,7 @@ const actionItemInclude = {
   },
 };
 
-const ensureWorkspaceMember = async (workspaceId, userId, tx = prisma) => {
+const getWorkspaceMembership = async (workspaceId, userId, tx = prisma) => {
   const membership = await tx.workspaceMember.findUnique({
     where: {
       userId_workspaceId: {
@@ -32,8 +32,11 @@ const ensureWorkspaceMember = async (workspaceId, userId, tx = prisma) => {
     },
   });
 
-  return Boolean(membership);
+  return membership;
 };
+
+const ensureWorkspaceMember = async (workspaceId, userId, tx = prisma) =>
+  Boolean(await getWorkspaceMembership(workspaceId, userId, tx));
 
 const createAuditLog = (tx, { action, details, userId, workspaceId }) =>
   tx.auditLog.create({
@@ -135,15 +138,17 @@ export const createActionItem = async (req, res) => {
     }
 
     const actionItem = await prisma.$transaction(async (tx) => {
-      const hasAccess = await ensureWorkspaceMember(
+      const membership = await getWorkspaceMembership(
         workspaceId,
         req.user.id,
         tx,
       );
 
-      if (!hasAccess) {
+      if (!membership) {
         return null;
       }
+
+      const resolvedAssigneeId = assigneeId || req.user.id;
 
       if (assigneeId) {
         const assigneeMembership = await tx.workspaceMember.findUnique({
@@ -172,7 +177,7 @@ export const createActionItem = async (req, res) => {
           priority: priority || "MEDIUM",
           status: status || "TODO",
           dueDate: new Date(dueDate),
-          assigneeId: assigneeId || req.user.id,
+          assigneeId: resolvedAssigneeId,
           goalId,
         },
         include: actionItemInclude,
@@ -237,13 +242,13 @@ export const updateActionItem = async (req, res) => {
     }
 
     const actionItem = await prisma.$transaction(async (tx) => {
-      const hasAccess = await ensureWorkspaceMember(
+      const membership = await getWorkspaceMembership(
         workspaceId,
         req.user.id,
         tx,
       );
 
-      if (!hasAccess) {
+      if (!membership) {
         return null;
       }
 
@@ -345,14 +350,18 @@ export const deleteActionItem = async (req, res) => {
     const { workspaceId, actionItemId } = req.params;
 
     const deleted = await prisma.$transaction(async (tx) => {
-      const hasAccess = await ensureWorkspaceMember(
+      const membership = await getWorkspaceMembership(
         workspaceId,
         req.user.id,
         tx,
       );
 
-      if (!hasAccess) {
+      if (!membership) {
         return null;
+      }
+
+      if (membership.role !== "ADMIN") {
+        return "delete-forbidden";
       }
 
       const existingActionItem = await tx.actionItem.findFirst({
@@ -387,6 +396,12 @@ export const deleteActionItem = async (req, res) => {
 
     if (deleted === false) {
       return res.status(404).json({ message: "Action item not found." });
+    }
+
+    if (deleted === "delete-forbidden") {
+      return res
+        .status(403)
+        .json({ message: "Only admins can delete action items." });
     }
 
     emitToWorkspace(workspaceId, "action_item_deleted", { actionItemId });
