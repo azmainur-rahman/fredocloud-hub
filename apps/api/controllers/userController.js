@@ -10,8 +10,8 @@ const publicUserSelect = {
   updatedAt: true,
 };
 
-const uploadToCloudinary = (fileBuffer) =>
-  new Promise((resolve, reject) => {
+const uploadToCloudinary = (fileBuffer) =>{
+ return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: "fredocloud/avatars",
@@ -33,7 +33,7 @@ const uploadToCloudinary = (fileBuffer) =>
 
     stream.end(fileBuffer);
   });
-
+}
 export const uploadAvatar = async (req, res) => {
   try {
     if (!req.file) {
