@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import prisma from "../utils/prisma.js";
 import { clearAuthCookies, generateToken } from "../utils/generateToken.js";
 
@@ -98,6 +99,38 @@ export const logoutUser = (req, res) => {
   clearAuthCookies(res);
 
   return res.json({ message: "Logged out successfully." });
+};
+
+export const refreshToken = async (req, res) => {
+  try {
+    const token = req.cookies?.refreshToken;
+
+    if (!token) {
+      return res.status(401).json({ message: "Refresh token is missing." });
+    }
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_REFRESH_SECRET || "dev_refresh_secret",
+    );
+
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: publicUserSelect,
+    });
+
+    if (!user) {
+      clearAuthCookies(res);
+      return res.status(401).json({ message: "Invalid refresh token." });
+    }
+
+    generateToken(res, user.id);
+
+    return res.json({ user });
+  } catch {
+    clearAuthCookies(res);
+    return res.status(401).json({ message: "Invalid refresh token." });
+  }
 };
 
 export const getMe = (req, res) => {

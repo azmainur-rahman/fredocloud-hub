@@ -16,10 +16,11 @@ import { initSocket } from "./utils/socket.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
+const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: clientUrl,
     credentials: true,
   },
 });
@@ -28,7 +29,7 @@ initSocket(io);
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: clientUrl,
     credentials: true,
   }),
 );

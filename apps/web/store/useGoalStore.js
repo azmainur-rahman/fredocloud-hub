@@ -4,17 +4,40 @@ import api from "../lib/axios.js";
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message || fallback;
 
+const upsertGoals = (goals, goal) =>
+  goals.some((currentGoal) => currentGoal.id === goal.id)
+    ? goals.map((currentGoal) =>
+        currentGoal.id === goal.id ? goal : currentGoal,
+      )
+    : [goal, ...goals];
+
+const uniqueGoals = (goals) =>
+  Array.from(new Map(goals.map((goal) => [goal.id, goal])).values());
+
 const useGoalStore = create((set, get) => ({
   goals: [],
   isLoading: false,
 
   upsertGoal: (goal) => {
     set({
-      goals: get().goals.some((currentGoal) => currentGoal.id === goal.id)
-        ? get().goals.map((currentGoal) =>
-            currentGoal.id === goal.id ? goal : currentGoal,
-          )
-        : [goal, ...get().goals],
+      goals: upsertGoals(get().goals, goal),
+    });
+  },
+
+  addGoalUpdate: (goalId, goalUpdate) => {
+    set({
+      goals: get().goals.map((goal) =>
+        goal.id === goalId
+          ? {
+              ...goal,
+              updates: (goal.updates || []).some(
+                (update) => update.id === goalUpdate.id,
+              )
+                ? goal.updates
+                : [goalUpdate, ...(goal.updates || [])],
+            }
+          : goal,
+      ),
     });
   },
 
@@ -34,7 +57,7 @@ const useGoalStore = create((set, get) => ({
       const response = await api.get(`/workspaces/${workspaceId}/goals`);
       const goals = response.data.goals || [];
 
-      set({ goals, isLoading: false });
+      set({ goals: uniqueGoals(goals), isLoading: false });
 
       return goals;
     } catch (error) {
@@ -53,7 +76,7 @@ const useGoalStore = create((set, get) => ({
       );
       const goal = response.data.goal;
 
-      set({ goals: [goal, ...get().goals], isLoading: false });
+      set({ goals: upsertGoals(get().goals, goal), isLoading: false });
 
       return goal;
     } catch (error) {
@@ -99,6 +122,28 @@ const useGoalStore = create((set, get) => ({
     } catch (error) {
       set({ isLoading: false });
       throw new Error(getErrorMessage(error, "Failed to delete goal."));
+    }
+  },
+
+  createGoalUpdate: async (workspaceId, goalId, payload) => {
+    set({ isLoading: true });
+
+    try {
+      const response = await api.post(
+        `/workspaces/${workspaceId}/goals/${goalId}/updates`,
+        payload,
+      );
+      const goalUpdate = response.data.goalUpdate;
+
+      get().addGoalUpdate(goalId, goalUpdate);
+      set({ isLoading: false });
+
+      return goalUpdate;
+    } catch (error) {
+      set({ isLoading: false });
+      throw new Error(
+        getErrorMessage(error, "Failed to post progress update."),
+      );
     }
   },
 }));

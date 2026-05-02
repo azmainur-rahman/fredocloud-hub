@@ -4,17 +4,21 @@ import api from "../lib/axios.js";
 const getErrorMessage = (error, fallback) =>
   error?.response?.data?.message || fallback;
 
+const upsertActionItems = (actionItems, actionItem) =>
+  actionItems.some((item) => item.id === actionItem.id)
+    ? actionItems.map((item) => (item.id === actionItem.id ? actionItem : item))
+    : [actionItem, ...actionItems];
+
+const uniqueActionItems = (actionItems) =>
+  Array.from(new Map(actionItems.map((item) => [item.id, item])).values());
+
 const useActionItemStore = create((set, get) => ({
   actionItems: [],
   isLoading: false,
 
   upsertActionItem: (actionItem) => {
     set({
-      actionItems: get().actionItems.some((item) => item.id === actionItem.id)
-        ? get().actionItems.map((item) =>
-            item.id === actionItem.id ? actionItem : item,
-          )
-        : [actionItem, ...get().actionItems],
+      actionItems: upsertActionItems(get().actionItems, actionItem),
     });
   },
 
@@ -36,7 +40,7 @@ const useActionItemStore = create((set, get) => ({
       const response = await api.get(`/workspaces/${workspaceId}/action-items`);
       const actionItems = response.data.actionItems || [];
 
-      set({ actionItems, isLoading: false });
+      set({ actionItems: uniqueActionItems(actionItems), isLoading: false });
 
       return actionItems;
     } catch (error) {
@@ -56,7 +60,7 @@ const useActionItemStore = create((set, get) => ({
       const actionItem = response.data.actionItem;
 
       set({
-        actionItems: [actionItem, ...get().actionItems],
+        actionItems: upsertActionItems(get().actionItems, actionItem),
         isLoading: false,
       });
 

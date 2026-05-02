@@ -145,6 +145,21 @@ export const createActionItem = async (req, res) => {
         return null;
       }
 
+      if (assigneeId) {
+        const assigneeMembership = await tx.workspaceMember.findUnique({
+          where: {
+            userId_workspaceId: {
+              userId: assigneeId,
+              workspaceId,
+            },
+          },
+        });
+
+        if (!assigneeMembership) {
+          return "missing-assignee";
+        }
+      }
+
       const goal = await ensureGoalInWorkspace(goalId, workspaceId, tx);
 
       if (!goal) {
@@ -183,6 +198,12 @@ export const createActionItem = async (req, res) => {
 
     if (actionItem === false) {
       return res.status(404).json({ message: "Goal not found." });
+    }
+
+    if (actionItem === "missing-assignee") {
+      return res
+        .status(400)
+        .json({ message: "Assignee must be a workspace member." });
     }
 
     emitToWorkspace(workspaceId, "action_item_created", { actionItem });
@@ -245,6 +266,21 @@ export const updateActionItem = async (req, res) => {
         }
       }
 
+      if (assigneeId) {
+        const assigneeMembership = await tx.workspaceMember.findUnique({
+          where: {
+            userId_workspaceId: {
+              userId: assigneeId,
+              workspaceId,
+            },
+          },
+        });
+
+        if (!assigneeMembership) {
+          return "missing-assignee";
+        }
+      }
+
       const data = {};
 
       if (title !== undefined) data.title = title;
@@ -284,6 +320,12 @@ export const updateActionItem = async (req, res) => {
 
     if (actionItem === "missing-goal") {
       return res.status(404).json({ message: "Goal not found." });
+    }
+
+    if (actionItem === "missing-assignee") {
+      return res
+        .status(400)
+        .json({ message: "Assignee must be a workspace member." });
     }
 
     emitToWorkspace(workspaceId, "action_item_updated", { actionItem });

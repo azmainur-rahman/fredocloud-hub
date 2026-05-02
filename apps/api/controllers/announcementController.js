@@ -10,6 +10,32 @@ const announcementInclude = {
       avatarUrl: true,
     },
   },
+  comments: {
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  },
+  reactions: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  },
 };
 
 const ensureWorkspaceMember = async (workspaceId, userId, tx = prisma) => {
@@ -35,6 +61,24 @@ const createAuditLog = (tx, { action, details, userId, workspaceId }) =>
     },
   });
 
+const attachAnnouncementFiles = async (workspaceId, announcements) => {
+  const attachmentRows = await prisma.attachment.findMany({
+    where: {
+      workspaceId,
+      entityType: "ANNOUNCEMENT",
+      entityId: { in: announcements.map((announcement) => announcement.id) },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return announcements.map((announcement) => ({
+    ...announcement,
+    attachments: attachmentRows.filter(
+      (attachment) => attachment.entityId === announcement.id,
+    ),
+  }));
+};
+
 export const getAnnouncements = async (req, res) => {
   try {
     const { workspaceId } = req.params;
@@ -50,7 +94,12 @@ export const getAnnouncements = async (req, res) => {
       orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
     });
 
-    return res.json({ announcements });
+    const announcementsWithAttachments = await attachAnnouncementFiles(
+      workspaceId,
+      announcements,
+    );
+
+    return res.json({ announcements: announcementsWithAttachments });
   } catch {
     return res.status(500).json({ message: "Failed to fetch announcements." });
   }
@@ -74,7 +123,12 @@ export const getAnnouncement = async (req, res) => {
       return res.status(404).json({ message: "Announcement not found." });
     }
 
-    return res.json({ announcement });
+    const [announcementWithAttachments] = await attachAnnouncementFiles(
+      workspaceId,
+      [announcement],
+    );
+
+    return res.json({ announcement: announcementWithAttachments });
   } catch {
     return res.status(500).json({ message: "Failed to fetch announcement." });
   }
@@ -256,5 +310,208 @@ export const deleteAnnouncement = async (req, res) => {
     return res.json({ message: "Announcement deleted successfully." });
   } catch {
     return res.status(500).json({ message: "Failed to delete announcement." });
+  }
+};
+
+const getMentionedEmails = (content) =>
+  Array.from(
+    new Set(
+      (content.match(/@[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).map(
+        (mention) => mention.slice(1).toLowerCase(),
+      ),
+    ),
+  );
+
+export const createAnnouncementComment = async (req, res) => {
+  try {
+    const { workspaceId, announcementId } = req.params;
+    const content = req.body.content?.trim();
+
+    if (!content) {
+      return res.status(400).json({ message: "Comment is required." });
+    }
+
+    const comment = await prisma.$transaction(async (tx) => {
+      const hasAccess = await ensureWorkspaceMember(
+        workspaceId,
+        req.user.id,
+        tx,
+      );
+
+      if (!hasAccess) {
+        return null;
+      }
+
+      const announcement = await tx.announcement.findFirst({
+        where: { id: announcementId, workspaceId },
+        select: { id: true },
+      });
+
+      if (!announcement) {
+        return false;
+      }
+
+      const createdComment = await tx.announcementComment.create({
+        data: {
+          content,
+          announcementId,
+          authorId: req.user.id,
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+
+      const mentionedEmails = getMentionedEmails(content);
+
+      if (mentionedEmails.length > 0) {
+        const mentionedUsers = await tx.user.findMany({
+          where: {
+            email: { in: mentionedEmails },
+            memberships: { some: { workspaceId } },
+            id: { not: req.user.id },
+          },
+          select: { id: true },
+        });
+
+        await Promise.all(
+          mentionedUsers.map((user) =>
+            tx.notification.create({
+              data: {
+                message: `${req.user.name} mentioned you in an announcement comment`,
+                userId: user.id,
+              },
+            }),
+          ),
+        );
+      }
+
+      await createAuditLog(tx, {
+        action: "ANNOUNCEMENT_COMMENTED",
+        details: { announcementId, commentId: createdComment.id },
+        userId: req.user.id,
+        workspaceId,
+      });
+
+      return createdComment;
+    });
+
+    if (comment === null) {
+      return res.status(403).json({ message: "Workspace access denied." });
+    }
+
+    if (comment === false) {
+      return res.status(404).json({ message: "Announcement not found." });
+    }
+
+    emitToWorkspace(workspaceId, "announcement_comment_created", {
+      announcementId,
+      comment,
+    });
+
+    return res.status(201).json({ comment });
+  } catch {
+    return res.status(500).json({ message: "Failed to create comment." });
+  }
+};
+
+export const toggleAnnouncementReaction = async (req, res) => {
+  try {
+    const { workspaceId, announcementId } = req.params;
+    const emoji = req.body.emoji?.trim();
+
+    if (!emoji) {
+      return res.status(400).json({ message: "Emoji is required." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const hasAccess = await ensureWorkspaceMember(
+        workspaceId,
+        req.user.id,
+        tx,
+      );
+
+      if (!hasAccess) {
+        return null;
+      }
+
+      const announcement = await tx.announcement.findFirst({
+        where: { id: announcementId, workspaceId },
+        select: { id: true },
+      });
+
+      if (!announcement) {
+        return false;
+      }
+
+      const existingReaction = await tx.announcementReaction.findUnique({
+        where: {
+          announcementId_userId_emoji: {
+            announcementId,
+            userId: req.user.id,
+            emoji,
+          },
+        },
+      });
+
+      if (existingReaction) {
+        await tx.announcementReaction.delete({
+          where: { id: existingReaction.id },
+        });
+
+        return { removed: true, reaction: existingReaction };
+      }
+
+      const reaction = await tx.announcementReaction.create({
+        data: {
+          emoji,
+          announcementId,
+          userId: req.user.id,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+
+      await createAuditLog(tx, {
+        action: "ANNOUNCEMENT_REACTED",
+        details: { announcementId, reactionId: reaction.id, emoji },
+        userId: req.user.id,
+        workspaceId,
+      });
+
+      return { removed: false, reaction };
+    });
+
+    if (result === null) {
+      return res.status(403).json({ message: "Workspace access denied." });
+    }
+
+    if (result === false) {
+      return res.status(404).json({ message: "Announcement not found." });
+    }
+
+    emitToWorkspace(workspaceId, "announcement_reaction_changed", {
+      announcementId,
+      ...result,
+    });
+
+    return res.json(result);
+  } catch {
+    return res.status(500).json({ message: "Failed to update reaction." });
   }
 };

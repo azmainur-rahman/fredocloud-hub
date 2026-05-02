@@ -17,19 +17,33 @@ export default function DashboardLayout({ children }) {
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const authLoading = useAuthStore((state) => state.isLoading);
+  const user = useAuthStore((state) => state.user);
   const checkAuth = useAuthStore((state) => state.checkAuth);
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
+  const fetchMembers = useWorkspaceStore((state) => state.fetchMembers);
+  const setOnlineMembers = useWorkspaceStore((state) => state.setOnlineMembers);
+  const upsertWorkspace = useWorkspaceStore((state) => state.upsertWorkspace);
+  const removeWorkspace = useWorkspaceStore((state) => state.removeWorkspace);
+  const upsertMember = useWorkspaceStore((state) => state.upsertMember);
   const fetchNotifications = useNotificationStore(
     (state) => state.fetchNotifications,
   );
+  const upsertNotification = useNotificationStore(
+    (state) => state.upsertNotification,
+  );
   const upsertGoal = useGoalStore((state) => state.upsertGoal);
   const removeGoal = useGoalStore((state) => state.removeGoal);
+  const addGoalUpdate = useGoalStore((state) => state.addGoalUpdate);
   const upsertAnnouncement = useAnnouncementStore(
     (state) => state.upsertAnnouncement,
   );
   const removeAnnouncement = useAnnouncementStore(
     (state) => state.removeAnnouncement,
+  );
+  const addComment = useAnnouncementStore((state) => state.addComment);
+  const applyReactionChange = useAnnouncementStore(
+    (state) => state.applyReactionChange,
   );
   const upsertActionItem = useActionItemStore(
     (state) => state.upsertActionItem,
@@ -56,7 +70,13 @@ export default function DashboardLayout({ children }) {
   }, [fetchNotifications, fetchWorkspaces, isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated || !activeWorkspace?.id) {
+    if (isAuthenticated && activeWorkspace?.id) {
+      fetchMembers(activeWorkspace.id).catch(() => null);
+    }
+  }, [activeWorkspace?.id, fetchMembers, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) {
       return;
     }
 
@@ -64,51 +84,117 @@ export default function DashboardLayout({ children }) {
       socket.connect();
     }
 
-    socket.emit("join_workspace", activeWorkspace.id);
+    socket.emit("join_user", user.id);
+
+    if (activeWorkspace?.id) {
+      socket.emit("join_workspace", {
+        workspaceId: activeWorkspace.id,
+        user: {
+          id: user.id,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+        },
+      });
+    }
 
     const handleGoal = ({ goal }) => upsertGoal(goal);
     const handleGoalDeleted = ({ goalId }) => removeGoal(goalId);
+    const handleGoalUpdate = ({ goalId, goalUpdate }) =>
+      addGoalUpdate(goalId, goalUpdate);
     const handleAnnouncement = ({ announcement }) =>
       upsertAnnouncement(announcement);
     const handleAnnouncementDeleted = ({ announcementId }) =>
       removeAnnouncement(announcementId);
+    const handleAnnouncementComment = ({ announcementId, comment }) =>
+      addComment(announcementId, comment);
+    const handleAnnouncementReaction = ({
+      announcementId,
+      reaction,
+      removed,
+    }) => applyReactionChange(announcementId, reaction, removed);
     const handleActionItem = ({ actionItem }) => upsertActionItem(actionItem);
     const handleActionItemDeleted = ({ actionItemId }) =>
       removeActionItem(actionItemId);
+    const handlePresence = ({ members }) => setOnlineMembers(members);
+    const handleWorkspaceInvited = () => {
+      fetchWorkspaces().catch(() => null);
+      fetchNotifications().catch(() => null);
+    };
+    const handleNotificationCreated = ({ notification }) =>
+      upsertNotification(notification);
+    const handleWorkspaceUpdated = ({ workspace }) =>
+      upsertWorkspace(workspace);
+    const handleWorkspaceDeleted = ({ workspaceId }) =>
+      removeWorkspace(workspaceId);
+    const handleMemberInvited = ({ member }) => upsertMember(member);
 
     socket.on("goal_created", handleGoal);
     socket.on("goal_updated", handleGoal);
     socket.on("goal_deleted", handleGoalDeleted);
+    socket.on("goal_update_created", handleGoalUpdate);
     socket.on("announcement_posted", handleAnnouncement);
     socket.on("announcement_updated", handleAnnouncement);
     socket.on("announcement_deleted", handleAnnouncementDeleted);
+    socket.on("announcement_comment_created", handleAnnouncementComment);
+    socket.on("announcement_reaction_changed", handleAnnouncementReaction);
     socket.on("action_item_created", handleActionItem);
     socket.on("action_item_updated", handleActionItem);
     socket.on("item_status_changed", handleActionItem);
     socket.on("action_item_deleted", handleActionItemDeleted);
+    socket.on("workspace_presence", handlePresence);
+    socket.on("workspace_invited", handleWorkspaceInvited);
+    socket.on("notification_created", handleNotificationCreated);
+    socket.on("workspace_updated", handleWorkspaceUpdated);
+    socket.on("workspace_deleted", handleWorkspaceDeleted);
+    socket.on("member_invited", handleMemberInvited);
 
     return () => {
-      socket.emit("leave_workspace", activeWorkspace.id);
+      if (activeWorkspace?.id) {
+        socket.emit("leave_workspace", activeWorkspace.id);
+      }
       socket.off("goal_created", handleGoal);
       socket.off("goal_updated", handleGoal);
       socket.off("goal_deleted", handleGoalDeleted);
+      socket.off("goal_update_created", handleGoalUpdate);
       socket.off("announcement_posted", handleAnnouncement);
       socket.off("announcement_updated", handleAnnouncement);
       socket.off("announcement_deleted", handleAnnouncementDeleted);
+      socket.off("announcement_comment_created", handleAnnouncementComment);
+      socket.off("announcement_reaction_changed", handleAnnouncementReaction);
       socket.off("action_item_created", handleActionItem);
       socket.off("action_item_updated", handleActionItem);
       socket.off("item_status_changed", handleActionItem);
       socket.off("action_item_deleted", handleActionItemDeleted);
+      socket.off("workspace_presence", handlePresence);
+      socket.off("workspace_invited", handleWorkspaceInvited);
+      socket.off("notification_created", handleNotificationCreated);
+      socket.off("workspace_updated", handleWorkspaceUpdated);
+      socket.off("workspace_deleted", handleWorkspaceDeleted);
+      socket.off("member_invited", handleMemberInvited);
+      setOnlineMembers([]);
     };
   }, [
     activeWorkspace?.id,
+    addComment,
+    addGoalUpdate,
+    applyReactionChange,
+    fetchNotifications,
+    fetchWorkspaces,
     isAuthenticated,
     removeActionItem,
     removeAnnouncement,
     removeGoal,
+    removeWorkspace,
+    setOnlineMembers,
     upsertActionItem,
     upsertAnnouncement,
     upsertGoal,
+    upsertMember,
+    upsertNotification,
+    upsertWorkspace,
+    user?.avatarUrl,
+    user?.id,
+    user?.name,
   ]);
 
   if (!hasCheckedAuth || authLoading) {

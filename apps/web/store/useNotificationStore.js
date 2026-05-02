@@ -8,6 +8,20 @@ const useNotificationStore = create((set, get) => ({
   notifications: [],
   isLoading: false,
 
+  upsertNotification: (notification) => {
+    set({
+      notifications: get().notifications.some(
+        (currentNotification) => currentNotification.id === notification.id,
+      )
+        ? get().notifications.map((currentNotification) =>
+            currentNotification.id === notification.id
+              ? notification
+              : currentNotification,
+          )
+        : [notification, ...get().notifications],
+    });
+  },
+
   fetchNotifications: async () => {
     set({ isLoading: true });
 

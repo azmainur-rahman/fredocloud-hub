@@ -1,6 +1,12 @@
 "use client";
 
-import { Download, ListChecks, Target, TriangleAlert } from "lucide-react";
+import {
+  Download,
+  ListChecks,
+  ScrollText,
+  Target,
+  TriangleAlert,
+} from "lucide-react";
 import Papa from "papaparse";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -55,6 +61,8 @@ const downloadCsv = (filename, rows) => {
 export default function DashboardPage() {
   const [isMounted, setIsMounted] = useState(false);
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
+  const auditLogs = useWorkspaceStore((state) => state.auditLogs);
+  const fetchAuditLogs = useWorkspaceStore((state) => state.fetchAuditLogs);
   const accentColor = activeWorkspace?.accentColor || "#f97316";
   const goals = useGoalStore((state) => state.goals);
   const fetchGoals = useGoalStore((state) => state.fetchGoals);
@@ -72,9 +80,10 @@ export default function DashboardPage() {
       Promise.all([
         fetchGoals(activeWorkspace.id),
         fetchActionItems(activeWorkspace.id),
+        fetchAuditLogs(activeWorkspace.id),
       ]).catch((error) => toast.error(error.message));
     }
-  }, [activeWorkspace?.id, fetchActionItems, fetchGoals]);
+  }, [activeWorkspace?.id, fetchActionItems, fetchAuditLogs, fetchGoals]);
 
   const analytics = useMemo(() => {
     const weekStart = getWeekStart();
@@ -132,6 +141,24 @@ export default function DashboardPage() {
       [...goalRows, ...itemRows],
     );
     toast.success("CSV export ready.");
+  };
+
+  const exportAuditLogs = () => {
+    if (!activeWorkspace) {
+      toast.error("Select a workspace first.");
+      return;
+    }
+
+    downloadCsv(
+      `${activeWorkspace.name.replaceAll(" ", "-").toLowerCase()}-audit-log.csv`,
+      auditLogs.map((log) => ({
+        action: log.action,
+        actor: log.user?.name || "",
+        timestamp: log.timestamp,
+        details: JSON.stringify(log.details || {}),
+      })),
+    );
+    toast.success("Audit log export ready.");
   };
 
   const statCards = [
@@ -318,6 +345,54 @@ export default function DashboardPage() {
           </div>
         </article>
       </div>
+
+      <article className="rounded-2xl border border-white/10 bg-white/[0.05] p-5 shadow-xl shadow-black/10">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <ScrollText style={{ color: accentColor }} size={20} />
+              <h3 className="text-xl font-bold">Audit log</h3>
+            </div>
+            <p className="mt-1 text-sm text-gray-400">
+              Immutable timeline of recent workspace changes.
+            </p>
+          </div>
+          <button
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 px-4 text-sm font-semibold text-gray-200 transition hover:border-orange-500/60 hover:text-orange-300"
+            onClick={exportAuditLogs}
+            type="button"
+          >
+            <Download size={16} />
+            Export audit CSV
+          </button>
+        </div>
+        <div className="space-y-3">
+          {auditLogs.length === 0 ? (
+            <p className="rounded-lg border border-white/10 bg-gray-950/60 p-4 text-sm text-gray-400">
+              No audit activity yet.
+            </p>
+          ) : (
+            auditLogs.slice(0, 8).map((log) => (
+              <div
+                className="flex flex-col gap-2 rounded-lg border border-white/10 bg-gray-950/60 p-4 sm:flex-row sm:items-center sm:justify-between"
+                key={log.id}
+              >
+                <div>
+                  <p className="text-sm font-bold text-white">
+                    {log.action.replaceAll("_", " ")}
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {log.user?.name || "Team member"}
+                  </p>
+                </div>
+                <span className="text-xs text-gray-500">
+                  {new Date(log.timestamp).toLocaleString()}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </article>
     </section>
   );
 }

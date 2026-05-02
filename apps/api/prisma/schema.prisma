@@ -39,11 +39,15 @@ model User {
   updatedAt    DateTime @updatedAt
 
   memberships   WorkspaceMember[]
-  goalsOwned    Goal[]            @relation("GoalOwner")
-  announcements Announcement[]    @relation("AnnouncementAuthor")
-  actionItems   ActionItem[]      @relation("ActionItemAssignee")
+  goalsOwned    Goal[]                 @relation("GoalOwner")
+  announcements Announcement[]         @relation("AnnouncementAuthor")
+  actionItems   ActionItem[]           @relation("ActionItemAssignee")
   auditLogs     AuditLog[]
   notifications Notification[]
+  goalUpdates   GoalUpdate[]
+  comments      AnnouncementComment[]
+  reactions     AnnouncementReaction[]
+  attachments   Attachment[]
 }
 
 model Workspace {
@@ -58,6 +62,8 @@ model Workspace {
   goals         Goal[]
   announcements Announcement[]
   auditLogs     AuditLog[]
+  goalUpdates   GoalUpdate[]
+  attachments   Attachment[]
 
   @@index([name])
 }
@@ -91,6 +97,7 @@ model Goal {
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   milestones  Milestone[]
   actionItems ActionItem[]
+  updates     GoalUpdate[]
 
   @@index([workspaceId, status])
   @@index([ownerId])
@@ -119,11 +126,58 @@ model Announcement {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  author    User      @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author    User                   @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  workspace Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  comments  AnnouncementComment[]
+  reactions AnnouncementReaction[]
 
   @@index([workspaceId, pinned])
   @@index([authorId])
+}
+
+model GoalUpdate {
+  id          String   @id @default(uuid()) @db.Uuid
+  content     String
+  goalId      String   @db.Uuid
+  authorId    String   @db.Uuid
+  workspaceId String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  goal      Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([goalId, createdAt])
+  @@index([workspaceId, createdAt])
+}
+
+model AnnouncementComment {
+  id             String   @id @default(uuid()) @db.Uuid
+  content        String
+  announcementId String   @db.Uuid
+  authorId       String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([announcementId, createdAt])
+  @@index([authorId])
+}
+
+model AnnouncementReaction {
+  id             String   @id @default(uuid()) @db.Uuid
+  emoji          String
+  announcementId String   @db.Uuid
+  userId         String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId, emoji])
+  @@index([announcementId])
+  @@index([userId])
 }
 
 model ActionItem {
@@ -172,4 +226,23 @@ model Notification {
 
   @@index([userId, read])
   @@index([createdAt])
+}
+
+model Attachment {
+  id          String   @id @default(uuid()) @db.Uuid
+  url         String
+  publicId    String
+  fileName    String
+  fileType    String
+  entityType  String
+  entityId    String
+  uploaderId  String   @db.Uuid
+  workspaceId String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  uploader  User      @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, entityType, entityId])
+  @@index([uploaderId])
 }

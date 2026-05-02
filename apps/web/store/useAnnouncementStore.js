@@ -13,23 +13,33 @@ const sortAnnouncements = (announcements) =>
     return Number(b.pinned) - Number(a.pinned);
   });
 
+const upsertAnnouncements = (announcements, announcement) =>
+  sortAnnouncements(
+    announcements.some(
+      (currentAnnouncement) => currentAnnouncement.id === announcement.id,
+    )
+      ? announcements.map((currentAnnouncement) =>
+          currentAnnouncement.id === announcement.id
+            ? announcement
+            : currentAnnouncement,
+        )
+      : [announcement, ...announcements],
+  );
+
+const uniqueAnnouncements = (announcements) =>
+  Array.from(
+    new Map(
+      announcements.map((announcement) => [announcement.id, announcement]),
+    ).values(),
+  );
+
 const useAnnouncementStore = create((set, get) => ({
   announcements: [],
   isLoading: false,
 
   upsertAnnouncement: (announcement) => {
     set({
-      announcements: sortAnnouncements(
-        get().announcements.some(
-          (currentAnnouncement) => currentAnnouncement.id === announcement.id,
-        )
-          ? get().announcements.map((currentAnnouncement) =>
-              currentAnnouncement.id === announcement.id
-                ? announcement
-                : currentAnnouncement,
-            )
-          : [announcement, ...get().announcements],
-      ),
+      announcements: upsertAnnouncements(get().announcements, announcement),
     });
   },
 
@@ -38,6 +48,48 @@ const useAnnouncementStore = create((set, get) => ({
       announcements: get().announcements.filter(
         (announcement) => announcement.id !== announcementId,
       ),
+    });
+  },
+
+  addComment: (announcementId, comment) => {
+    set({
+      announcements: get().announcements.map((announcement) =>
+        announcement.id === announcementId
+          ? {
+              ...announcement,
+              comments: (announcement.comments || []).some(
+                (currentComment) => currentComment.id === comment.id,
+              )
+                ? announcement.comments
+                : [...(announcement.comments || []), comment],
+            }
+          : announcement,
+      ),
+    });
+  },
+
+  applyReactionChange: (announcementId, reaction, removed) => {
+    set({
+      announcements: get().announcements.map((announcement) => {
+        if (announcement.id !== announcementId) {
+          return announcement;
+        }
+
+        const reactions = announcement.reactions || [];
+
+        return {
+          ...announcement,
+          reactions: removed
+            ? reactions.filter(
+                (currentReaction) => currentReaction.id !== reaction.id,
+              )
+            : reactions.some(
+                  (currentReaction) => currentReaction.id === reaction.id,
+                )
+              ? reactions
+              : [...reactions, reaction],
+        };
+      }),
     });
   },
 
@@ -56,7 +108,7 @@ const useAnnouncementStore = create((set, get) => ({
       const announcements = response.data.announcements || [];
 
       set({
-        announcements: sortAnnouncements(announcements),
+        announcements: sortAnnouncements(uniqueAnnouncements(announcements)),
         isLoading: false,
       });
 
@@ -78,10 +130,7 @@ const useAnnouncementStore = create((set, get) => ({
       const announcement = response.data.announcement;
 
       set({
-        announcements: sortAnnouncements([
-          announcement,
-          ...get().announcements,
-        ]),
+        announcements: upsertAnnouncements(get().announcements, announcement),
         isLoading: false,
       });
 
@@ -137,6 +186,42 @@ const useAnnouncementStore = create((set, get) => ({
     } catch (error) {
       set({ isLoading: false });
       throw new Error(getErrorMessage(error, "Failed to delete announcement."));
+    }
+  },
+
+  createComment: async (workspaceId, announcementId, payload) => {
+    set({ isLoading: true });
+
+    try {
+      const response = await api.post(
+        `/workspaces/${workspaceId}/announcements/${announcementId}/comments`,
+        payload,
+      );
+      const comment = response.data.comment;
+
+      get().addComment(announcementId, comment);
+      set({ isLoading: false });
+
+      return comment;
+    } catch (error) {
+      set({ isLoading: false });
+      throw new Error(getErrorMessage(error, "Failed to create comment."));
+    }
+  },
+
+  toggleReaction: async (workspaceId, announcementId, emoji) => {
+    try {
+      const response = await api.post(
+        `/workspaces/${workspaceId}/announcements/${announcementId}/reactions`,
+        { emoji },
+      );
+      const { reaction, removed } = response.data;
+
+      get().applyReactionChange(announcementId, reaction, removed);
+
+      return response.data;
+    } catch (error) {
+      throw new Error(getErrorMessage(error, "Failed to update reaction."));
     }
   },
 }));

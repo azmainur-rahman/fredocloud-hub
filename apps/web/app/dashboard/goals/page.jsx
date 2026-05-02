@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Target, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Target, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import useGoalStore from "../../../store/useGoalStore.js";
@@ -12,8 +12,12 @@ const emptyGoal = {
   description: "",
   status: "PENDING",
   dueDate: "",
+  ownerId: "",
   milestones: [emptyMilestone],
 };
+
+const getDateInputValue = (date) =>
+  date ? new Date(date).toISOString().slice(0, 10) : "";
 
 const statusLabels = {
   PENDING: "Pending",
@@ -23,6 +27,7 @@ const statusLabels = {
 
 export default function GoalsPage() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
+  const members = useWorkspaceStore((state) => state.members);
   const accentColor = activeWorkspace?.accentColor || "#f97316";
   const goals = useGoalStore((state) => state.goals);
   const isLoading = useGoalStore((state) => state.isLoading);
@@ -30,8 +35,11 @@ export default function GoalsPage() {
   const createGoal = useGoalStore((state) => state.createGoal);
   const deleteGoal = useGoalStore((state) => state.deleteGoal);
   const updateGoal = useGoalStore((state) => state.updateGoal);
+  const createGoalUpdate = useGoalStore((state) => state.createGoalUpdate);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingGoal, setEditingGoal] = useState(null);
   const [form, setForm] = useState(emptyGoal);
+  const [updateDrafts, setUpdateDrafts] = useState({});
 
   useEffect(() => {
     if (activeWorkspace?.id) {
@@ -40,6 +48,12 @@ export default function GoalsPage() {
       );
     }
   }, [activeWorkspace?.id, fetchGoals]);
+
+  useEffect(() => {
+    if (!form.ownerId && members[0]?.id) {
+      setForm((current) => ({ ...current, ownerId: members[0].id }));
+    }
+  }, [form.ownerId, members]);
 
   const completionStats = useMemo(() => {
     const completed = goals.filter(
@@ -89,16 +103,57 @@ export default function GoalsPage() {
     }
 
     try {
-      await createGoal(activeWorkspace.id, {
+      const payload = {
         ...form,
         milestones: form.milestones.filter((milestone) => milestone.title),
-      });
-      toast.success("Goal created.");
-      setForm(emptyGoal);
+      };
+
+      if (editingGoal) {
+        await updateGoal(activeWorkspace.id, editingGoal.id, payload);
+        toast.success("Goal updated.");
+      } else {
+        await createGoal(activeWorkspace.id, payload);
+        toast.success("Goal created.");
+      }
+
+      setForm({ ...emptyGoal, ownerId: members[0]?.id || "" });
+      setEditingGoal(null);
       setIsModalOpen(false);
     } catch (error) {
       toast.error(error.message);
     }
+  };
+
+  const openCreateModal = () => {
+    setEditingGoal(null);
+    setForm({ ...emptyGoal, ownerId: members[0]?.id || "" });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (goal) => {
+    setEditingGoal(goal);
+    setForm({
+      title: goal.title || "",
+      description: goal.description || "",
+      status: goal.status || "PENDING",
+      dueDate: getDateInputValue(goal.dueDate),
+      ownerId: goal.owner?.id || goal.ownerId || members[0]?.id || "",
+      milestones:
+        goal.milestones?.length > 0
+          ? goal.milestones.map((milestone) => ({
+              id: milestone.id,
+              title: milestone.title,
+              progressPercentage: milestone.progressPercentage,
+            }))
+          : [emptyMilestone],
+    });
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingGoal(null);
+    setForm({ ...emptyGoal, ownerId: members[0]?.id || "" });
   };
 
   const handleStatusChange = async (goal, status) => {
@@ -119,6 +174,23 @@ export default function GoalsPage() {
     }
   };
 
+  const handleProgressUpdate = async (goalId) => {
+    const content = updateDrafts[goalId]?.trim();
+
+    if (!content) {
+      toast.error("Write a progress update first.");
+      return;
+    }
+
+    try {
+      await createGoalUpdate(activeWorkspace.id, goalId, { content });
+      setUpdateDrafts((current) => ({ ...current, [goalId]: "" }));
+      toast.success("Progress update posted.");
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -133,7 +205,7 @@ export default function GoalsPage() {
         </div>
         <button
           className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold text-gray-950 transition hover:brightness-110"
-          onClick={() => setIsModalOpen(true)}
+          onClick={openCreateModal}
           style={{ backgroundColor: accentColor }}
           type="button"
         >
@@ -166,7 +238,8 @@ export default function GoalsPage() {
                     {goal.description}
                   </p>
                   <p className="mt-3 text-xs font-medium text-gray-500">
-                    Due {new Date(goal.dueDate).toLocaleDateString()}
+                    Owner {goal.owner?.name || "Team member"} · Due{" "}
+                    {new Date(goal.dueDate).toLocaleDateString()}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -183,6 +256,13 @@ export default function GoalsPage() {
                       </option>
                     ))}
                   </select>
+                  <button
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-orange-500/50 hover:text-orange-300"
+                    onClick={() => openEditModal(goal)}
+                    type="button"
+                  >
+                    <Pencil size={17} />
+                  </button>
                   <button
                     className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-red-500/50 hover:text-red-300"
                     onClick={() => handleDelete(goal.id)}
@@ -216,6 +296,44 @@ export default function GoalsPage() {
                   </div>
                 ))}
               </div>
+
+              <div className="mt-5 rounded-xl border border-white/10 bg-gray-950/50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <input
+                    className="h-10 flex-1 rounded-lg border border-gray-800 bg-gray-900 px-3 text-sm text-white outline-none focus:border-orange-500"
+                    onChange={(event) =>
+                      setUpdateDrafts((current) => ({
+                        ...current,
+                        [goal.id]: event.target.value,
+                      }))
+                    }
+                    placeholder="Post a progress update"
+                    value={updateDrafts[goal.id] || ""}
+                  />
+                  <button
+                    className="h-10 rounded-lg px-4 text-sm font-bold text-gray-950 transition hover:brightness-110"
+                    onClick={() => handleProgressUpdate(goal.id)}
+                    style={{ backgroundColor: accentColor }}
+                    type="button"
+                  >
+                    Post update
+                  </button>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(goal.updates || []).slice(0, 3).map((update) => (
+                    <div
+                      className="rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2"
+                      key={update.id}
+                    >
+                      <p className="text-sm text-gray-200">{update.content}</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {update.author?.name || "Team member"} ·{" "}
+                        {new Date(update.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </article>
           ))
         )}
@@ -228,10 +346,12 @@ export default function GoalsPage() {
             onSubmit={handleCreate}
           >
             <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-2xl font-bold">Create goal</h3>
+              <h3 className="text-2xl font-bold">
+                {editingGoal ? "Edit goal" : "Create goal"}
+              </h3>
               <button
                 className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 hover:text-white"
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeModal}
                 type="button"
               >
                 <X size={18} />
@@ -274,6 +394,22 @@ export default function GoalsPage() {
                   value={form.dueDate}
                 />
               </div>
+              <select
+                className="h-11 rounded-lg border border-gray-800 bg-gray-900 px-4 text-sm text-white outline-none focus:border-orange-500"
+                name="ownerId"
+                onChange={updateField}
+                value={form.ownerId}
+              >
+                {members.length === 0 ? (
+                  <option value="">You will be the owner</option>
+                ) : (
+                  members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      Owner: {member.name}
+                    </option>
+                  ))
+                )}
+              </select>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -333,7 +469,13 @@ export default function GoalsPage() {
               style={{ backgroundColor: accentColor }}
               type="submit"
             >
-              {isLoading ? "Creating..." : "Create goal"}
+              {isLoading
+                ? editingGoal
+                  ? "Saving..."
+                  : "Creating..."
+                : editingGoal
+                  ? "Save goal"
+                  : "Create goal"}
             </button>
           </form>
         </div>

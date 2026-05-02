@@ -1,6 +1,7 @@
 import express from "express";
 import {
   createGoal,
+  createGoalUpdate,
   deleteGoal,
   getGoal,
   getGoals,
@@ -16,5 +17,6 @@ router
   .get(protect, getGoal)
   .put(protect, updateGoal)
   .delete(protect, deleteGoal);
+router.post("/:goalId/updates", protect, createGoalUpdate);
 
 export default router;

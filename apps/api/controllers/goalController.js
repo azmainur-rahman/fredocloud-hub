@@ -15,6 +15,19 @@ const goalInclude = {
   milestones: {
     orderBy: { createdAt: "asc" },
   },
+  updates: {
+    include: {
+      author: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  },
 };
 
 const ensureWorkspaceMember = async (workspaceId, userId, tx = prisma) => {
@@ -137,6 +150,21 @@ export const createGoal = async (req, res) => {
         return null;
       }
 
+      if (ownerId) {
+        const ownerMembership = await tx.workspaceMember.findUnique({
+          where: {
+            userId_workspaceId: {
+              userId: ownerId,
+              workspaceId,
+            },
+          },
+        });
+
+        if (!ownerMembership) {
+          return "missing-owner";
+        }
+      }
+
       const createdGoal = await tx.goal.create({
         data: {
           title,
@@ -167,6 +195,12 @@ export const createGoal = async (req, res) => {
 
     if (!goal) {
       return res.status(403).json({ message: "Workspace access denied." });
+    }
+
+    if (goal === "missing-owner") {
+      return res
+        .status(400)
+        .json({ message: "Owner must be a workspace member." });
     }
 
     emitToWorkspace(workspaceId, "goal_created", { goal });
@@ -217,6 +251,21 @@ export const updateGoal = async (req, res) => {
 
       if (!existingGoal) {
         return false;
+      }
+
+      if (ownerId) {
+        const ownerMembership = await tx.workspaceMember.findUnique({
+          where: {
+            userId_workspaceId: {
+              userId: ownerId,
+              workspaceId,
+            },
+          },
+        });
+
+        if (!ownerMembership) {
+          return "missing-owner";
+        }
       }
 
       const milestonePayload = normalizeMilestones(milestones);
@@ -285,6 +334,12 @@ export const updateGoal = async (req, res) => {
       return res.status(404).json({ message: "Goal not found." });
     }
 
+    if (goal === "missing-owner") {
+      return res
+        .status(400)
+        .json({ message: "Owner must be a workspace member." });
+    }
+
     emitToWorkspace(workspaceId, "goal_updated", { goal });
 
     return res.json({ goal });
@@ -341,5 +396,86 @@ export const deleteGoal = async (req, res) => {
     return res.json({ message: "Goal deleted successfully." });
   } catch {
     return res.status(500).json({ message: "Failed to delete goal." });
+  }
+};
+
+export const createGoalUpdate = async (req, res) => {
+  try {
+    const { workspaceId, goalId } = req.params;
+    const content = req.body.content?.trim();
+
+    if (!content) {
+      return res.status(400).json({ message: "Progress update is required." });
+    }
+
+    const goalUpdate = await prisma.$transaction(async (tx) => {
+      const hasAccess = await ensureWorkspaceMember(
+        workspaceId,
+        req.user.id,
+        tx,
+      );
+
+      if (!hasAccess) {
+        return null;
+      }
+
+      const goal = await tx.goal.findFirst({
+        where: { id: goalId, workspaceId },
+        select: { id: true, title: true },
+      });
+
+      if (!goal) {
+        return false;
+      }
+
+      const createdGoalUpdate = await tx.goalUpdate.create({
+        data: {
+          content,
+          goalId,
+          authorId: req.user.id,
+          workspaceId,
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+
+      await createAuditLog(tx, {
+        action: "GOAL_PROGRESS_POSTED",
+        details: {
+          goalId,
+          goalTitle: goal.title,
+          updateId: createdGoalUpdate.id,
+        },
+        userId: req.user.id,
+        workspaceId,
+      });
+
+      return createdGoalUpdate;
+    });
+
+    if (goalUpdate === null) {
+      return res.status(403).json({ message: "Workspace access denied." });
+    }
+
+    if (goalUpdate === false) {
+      return res.status(404).json({ message: "Goal not found." });
+    }
+
+    emitToWorkspace(workspaceId, "goal_update_created", {
+      goalId,
+      goalUpdate,
+    });
+
+    return res.status(201).json({ goalUpdate });
+  } catch {
+    return res.status(500).json({ message: "Failed to post progress update." });
   }
 };

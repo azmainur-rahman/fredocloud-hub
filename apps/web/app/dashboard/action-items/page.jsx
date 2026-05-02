@@ -1,6 +1,6 @@
 "use client";
 
-import { Columns3, List, Plus, Trash2, X } from "lucide-react";
+import { Columns3, List, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import useActionItemStore from "../../../store/useActionItemStore.js";
@@ -13,6 +13,7 @@ const emptyActionItem = {
   status: "TODO",
   dueDate: "",
   goalId: "",
+  assigneeId: "",
 };
 
 const statusLabels = {
@@ -33,8 +34,12 @@ const priorityClasses = {
   HIGH: "border-red-500/30 text-red-300",
 };
 
+const getDateInputValue = (date) =>
+  date ? new Date(date).toISOString().slice(0, 10) : "";
+
 export default function ActionItemsPage() {
   const activeWorkspace = useWorkspaceStore((state) => state.activeWorkspace);
+  const members = useWorkspaceStore((state) => state.members);
   const accentColor = activeWorkspace?.accentColor || "#f97316";
   const goals = useGoalStore((state) => state.goals);
   const fetchGoals = useGoalStore((state) => state.fetchGoals);
@@ -54,6 +59,7 @@ export default function ActionItemsPage() {
   );
   const [view, setView] = useState("list");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingActionItem, setEditingActionItem] = useState(null);
   const [form, setForm] = useState(emptyActionItem);
 
   useEffect(() => {
@@ -70,6 +76,12 @@ export default function ActionItemsPage() {
       setForm((current) => ({ ...current, goalId: goals[0].id }));
     }
   }, [form.goalId, goals]);
+
+  useEffect(() => {
+    if (!form.assigneeId && members[0]?.id) {
+      setForm((current) => ({ ...current, assigneeId: members[0].id }));
+    }
+  }, [form.assigneeId, members]);
 
   const groupedItems = useMemo(
     () =>
@@ -90,7 +102,7 @@ export default function ActionItemsPage() {
     }));
   };
 
-  const handleCreate = async (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!activeWorkspace?.id) {
@@ -104,13 +116,61 @@ export default function ActionItemsPage() {
     }
 
     try {
-      await createActionItem(activeWorkspace.id, form);
-      toast.success("Action item created.");
-      setForm({ ...emptyActionItem, goalId: goals[0]?.id || "" });
+      if (editingActionItem) {
+        await updateActionItem(activeWorkspace.id, editingActionItem.id, form);
+        toast.success("Action item updated.");
+      } else {
+        await createActionItem(activeWorkspace.id, form);
+        toast.success("Action item created.");
+      }
+
+      setForm({
+        ...emptyActionItem,
+        goalId: goals[0]?.id || "",
+        assigneeId: members[0]?.id || "",
+      });
+      setEditingActionItem(null);
       setIsModalOpen(false);
     } catch (error) {
       toast.error(error.message);
     }
+  };
+
+  const openCreateModal = () => {
+    setEditingActionItem(null);
+    setForm({
+      ...emptyActionItem,
+      goalId: goals[0]?.id || "",
+      assigneeId: members[0]?.id || "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (actionItem) => {
+    setEditingActionItem(actionItem);
+    setForm({
+      title: actionItem.title || "",
+      priority: actionItem.priority || "MEDIUM",
+      status: actionItem.status || "TODO",
+      dueDate: getDateInputValue(actionItem.dueDate),
+      goalId: actionItem.goal?.id || actionItem.goalId || goals[0]?.id || "",
+      assigneeId:
+        actionItem.assignee?.id ||
+        actionItem.assigneeId ||
+        members[0]?.id ||
+        "",
+    });
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingActionItem(null);
+    setForm({
+      ...emptyActionItem,
+      goalId: goals[0]?.id || "",
+      assigneeId: members[0]?.id || "",
+    });
   };
 
   const handleStatusChange = async (actionItem, status) => {
@@ -142,6 +202,9 @@ export default function ActionItemsPage() {
           <p className="mt-1 text-xs text-gray-500">
             Due {new Date(item.dueDate).toLocaleDateString()}
           </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Assignee: {item.assignee?.name || "Team member"}
+          </p>
         </div>
         <span
           className={`rounded-full border px-2 py-1 text-xs font-semibold ${
@@ -163,6 +226,13 @@ export default function ActionItemsPage() {
             </option>
           ))}
         </select>
+        <button
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-orange-500/50 hover:text-orange-300"
+          onClick={() => openEditModal(item)}
+          type="button"
+        >
+          <Pencil size={16} />
+        </button>
         <button
           className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 transition hover:border-red-500/50 hover:text-red-300"
           onClick={() => handleDelete(item.id)}
@@ -221,7 +291,7 @@ export default function ActionItemsPage() {
           </div>
           <button
             className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-bold text-gray-950 transition hover:brightness-110"
-            onClick={() => setIsModalOpen(true)}
+            onClick={openCreateModal}
             style={{ backgroundColor: accentColor }}
             type="button"
           >
@@ -270,13 +340,15 @@ export default function ActionItemsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <form
             className="w-full max-w-2xl rounded-2xl border border-white/10 bg-gray-950 p-6 shadow-2xl shadow-orange-950/30"
-            onSubmit={handleCreate}
+            onSubmit={handleSubmit}
           >
             <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-2xl font-bold">Create action item</h3>
+              <h3 className="text-2xl font-bold">
+                {editingActionItem ? "Edit action item" : "Create action item"}
+              </h3>
               <button
                 className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-gray-400 hover:text-white"
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeModal}
                 type="button"
               >
                 <X size={18} />
@@ -316,6 +388,22 @@ export default function ActionItemsPage() {
                   value={form.dueDate}
                 />
               </div>
+              <select
+                className="h-11 rounded-lg border border-gray-800 bg-gray-900 px-4 text-sm text-white outline-none focus:border-orange-500"
+                name="assigneeId"
+                onChange={updateField}
+                value={form.assigneeId}
+              >
+                {members.length === 0 ? (
+                  <option value="">You will be assigned</option>
+                ) : (
+                  members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      Assignee: {member.name}
+                    </option>
+                  ))
+                )}
+              </select>
               <div className="grid gap-4 sm:grid-cols-2">
                 <select
                   className="h-11 rounded-lg border border-gray-800 bg-gray-900 px-4 text-sm text-white outline-none focus:border-orange-500"
@@ -350,7 +438,13 @@ export default function ActionItemsPage() {
               style={{ backgroundColor: accentColor }}
               type="submit"
             >
-              {isLoading ? "Creating..." : "Create action item"}
+              {isLoading
+                ? editingActionItem
+                  ? "Saving..."
+                  : "Creating..."
+                : editingActionItem
+                  ? "Save action item"
+                  : "Create action item"}
             </button>
           </form>
         </div>

@@ -1,3 +1,12 @@
 import { nextJsConfig } from "@repo/eslint-config/next-js";
 
-export default nextJsConfig;
+export default [
+  ...nextJsConfig,
+  {
+    languageOptions: {
+      globals: {
+        process: "readonly",
+      },
+    },
+  },
+];

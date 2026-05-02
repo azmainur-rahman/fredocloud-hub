@@ -8,6 +8,7 @@ const useAuthStore = create((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
+  isAvatarLoading: false,
 
   setUser: (user) => {
     set({ user, isAuthenticated: Boolean(user) });
@@ -81,7 +82,7 @@ const useAuthStore = create((set) => ({
   },
 
   uploadAvatar: async (file) => {
-    set({ isLoading: true });
+    set({ isAvatarLoading: true });
 
     try {
       const formData = new FormData();
@@ -95,12 +96,12 @@ const useAuthStore = create((set) => ({
       set({
         user: response.data.user,
         isAuthenticated: true,
-        isLoading: false,
+        isAvatarLoading: false,
       });
 
       return response.data.user;
     } catch (error) {
-      set({ isLoading: false });
+      set({ isAvatarLoading: false });
       throw new Error(getErrorMessage(error, "Failed to upload avatar."));
     }
   },
